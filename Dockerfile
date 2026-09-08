@@ -25,5 +25,5 @@ RUN npm run build
 ENV PORT=3000
 EXPOSE 3000
 
-# Start: run migrations then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+# Start: push schema then start server
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm start"]
