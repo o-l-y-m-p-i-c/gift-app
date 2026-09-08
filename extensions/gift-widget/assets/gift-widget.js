@@ -174,8 +174,13 @@
     const container = document.getElementById("gift-widget-container");
     if (!container) return;
 
+    // Collect variant IDs already in cart to exclude from gift candidates
+    const cartVariantIds = new Set(
+      cart.items.map((item) => String(item.variant_id)),
+    );
+
     // Fetch eligible products
-    const products = await fetchGiftProducts(maxGiftPrice);
+    const products = await fetchGiftProducts(maxGiftPrice, cartVariantIds);
     giftProducts = products;
 
     if (products.length === 0) {
@@ -256,15 +261,56 @@
 
   // ─── Gift products fetch ───────────────────────────────────
 
-  async function fetchGiftProducts(maxPrice) {
-    const shopDomain = document.getElementById("gift-widget-container").dataset.shop;
-    const appUrl = getAppUrl();
-
+  async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set()) {
     try {
-      const data = await fetchJson(
-        `${appUrl}/products?shop=${shopDomain}&maxPrice=${maxPrice}`,
-      );
-      return data.products || [];
+      // Fetch products directly from the storefront (same origin, no auth needed).
+      // The /products.json endpoint is publicly accessible on the storefront.
+      const allProducts = [];
+      let page = 1;
+      const perPage = 250;
+      // Fetch up to 4 pages (1000 products max)
+      while (page <= 4) {
+        const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) break;
+        const data = await res.json();
+        const products = data.products || [];
+        if (products.length === 0) break;
+        allProducts.push(...products);
+        if (products.length < perPage) break;
+        page++;
+      }
+
+      // Flatten variants and filter by price + availability
+      const eligible = [];
+      for (const product of allProducts) {
+        const image = product.images?.[0]?.src || "";
+        for (const variant of product.variants || []) {
+          const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
+          // variant.available is true when inventory > 0 (or inventory tracking is off)
+          if (
+            priceCents > 0 &&
+            priceCents <= maxPrice &&
+            variant.available !== false &&
+            !excludeVariantIds.has(String(variant.id))
+          ) {
+            eligible.push({
+              productId: String(product.id),
+              variantId: String(variant.id),
+              title:
+                variant.title === "Default Title"
+                  ? product.title
+                  : `${product.title} — ${variant.title}`,
+              price: priceCents,
+              image,
+            });
+          }
+        }
+      }
+
+      console.log(`[Gift Widget] Found ${eligible.length} eligible gifts (maxPrice=${maxPrice} cents) from ${allProducts.length} products`);
+      return eligible;
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch products:", e);
       return [];
