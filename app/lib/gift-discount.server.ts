@@ -11,7 +11,7 @@ export async function ensureGiftDiscount(admin: any) {
           apiType
         }
       }
-      discountNodes(first: 50, query: "title:\"Davines Free Gift\"") {
+      discountNodes(first: 50) {
         nodes {
           discount {
             __typename

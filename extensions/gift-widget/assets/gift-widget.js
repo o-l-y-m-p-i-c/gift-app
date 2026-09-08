@@ -203,7 +203,7 @@
             <p class="gift-widget__name">${p.title}</p>
             <p class="gift-widget__price">${formatPrice(p.price)}</p>
           </div>
-          <button type="button" class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}')">
+          <button type="button" class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}', '${tier.id}')">
             Select
           </button>
         </div>
@@ -273,14 +273,29 @@
 
   // ─── Cart actions ──────────────────────────────────────────
 
-  async function selectGift(variantId) {
+  async function selectGift(variantId, tierId) {
     const buttons = document.querySelectorAll(".gift-widget__select");
+    let giftAdded = false;
     buttons.forEach((button) => {
       button.disabled = true;
     });
 
     try {
-      const res = await fetch("/cart/add.js", {
+      const initialCart = await fetchCart();
+      const qualifyingVariantIds = initialCart.items
+        .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
+        .map((item) => String(item.variant_id));
+      const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variantId, tierId, qualifyingVariantIds }),
+      });
+      const codeData = await codeResponse.json().catch(() => ({}));
+      if (!codeResponse.ok || !codeData.code) {
+        throw new Error(codeData.error || "Unable to create gift discount.");
+      }
+
+      const addResponse = await fetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -294,14 +309,35 @@
         }),
       });
 
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
+      if (!addResponse.ok) {
+        const error = await addResponse.json().catch(() => ({}));
         throw new Error(error.description || "Unable to add this gift.");
       }
+      giftAdded = true;
 
       const cart = await fetchCart();
-      await onCartUpdate(cart);
+      const discountCodes = (cart.discount_codes || [])
+        .filter((discount) => discount.applicable !== false && discount.code)
+        .map((discount) => discount.code);
+      const updateResponse = await fetch("/cart/update.js", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          discount: [...new Set([...discountCodes, codeData.code])].join(","),
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        throw new Error("Unable to apply the gift discount.");
+      }
+
+      const discountedCart = await updateResponse.json();
+      await onCartUpdate(discountedCart);
     } catch (e) {
+      if (giftAdded) {
+        const cart = await fetchCart().catch(() => null);
+        if (cart) await removeGiftFromCart(cart);
+      }
       console.error("[Gift Widget] Failed to add gift:", e);
       showNotification(e.message || "Unable to add this gift.", "warning");
       buttons.forEach((button) => {
