@@ -1,0 +1,29 @@
+{% comment %}
+  Gift Widget — App Block for the cart page.
+  Shows available gifts when the cart reaches a configured threshold.
+  Added from the Apps section in the theme customizer.
+{% endcomment %}
+
+<div id="gift-widget-container"
+     data-shop="{{ request.host }}"
+     data-cart-total="{{ cart.total_price }}"
+></div>
+
+<script src="{{ 'gift-widget.js' | asset_url }}" defer></script>
+{{ 'gift-widget.css' | asset_url | stylesheet_tag }}
+
+{% schema %}
+{
+  "name": "Gift Widget",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["cart"]
+  },
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "This block shows a free gift selector when the cart total reaches a configured threshold. Configure thresholds in the Gift Threshold app."
+    }
+  ]
+}
+{% endschema %}

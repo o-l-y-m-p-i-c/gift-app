@@ -1,0 +1,16 @@
+type = "ui_extension"
+name = "Gift Checkout Block"
+
+[[extensions.targeting]]
+target = "purchase.checkout.block.render"
+
+[extensions.capabilities]
+network_access = true
+api_access = true
+
+[extensions.settings]
+  [[extensions.settings.fields]]
+  key = "title"
+  type = "single_line_text_field"
+  name = "Block Title"
+  description = "Title shown in the checkout gift block"
