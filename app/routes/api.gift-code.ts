@@ -26,9 +26,10 @@ export async function action({ request }: ActionFunctionArgs) {
   if (!admin) {
     const body = await request.json().catch(() => null);
     const shopParam = String(body?.shop || "");
-    shopDomain = (shopParam.includes(".myshopify.com")
-      ? shopParam
-      : (await resolveShopDomain(shopParam)) || "") || "";
+    shopDomain =
+      (shopParam.includes(".myshopify.com")
+        ? shopParam
+        : (await resolveShopDomain(shopParam)) || "") || "";
 
     if (shopDomain) {
       try {
@@ -40,14 +41,15 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     if (!admin) {
-      return corsJson({ error: "App session is unavailable." }, { status: 401 });
+      return corsJson(
+        { error: "App session is unavailable. Please reopen the app in Shopify admin." },
+        { status: 401 },
+      );
     }
 
-    // Re-parse body since we already consumed it in the fallback path
     return handleGiftCode(admin, shopDomain, body);
   }
 
-  // Normal path: parse body after app proxy auth
   const body = await request.json().catch(() => null);
   return handleGiftCode(admin, shopDomain, body);
 }
@@ -98,28 +100,40 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
   const qualifyingVariantGids = qualifyingVariantIds.map(
     (id) => `gid://shopify/ProductVariant/${id}`,
   );
-  const variantResponse = await admin.graphql(
-    `#graphql
-      query GiftVariants($giftId: ID!, $qualifyingIds: [ID!]!) {
-        productVariant(id: $giftId) {
-          id
-          price
-          availableForSale
-          product {
-            status
-          }
-        }
-        nodes(ids: $qualifyingIds) {
-          ... on ProductVariant {
+
+  // Query variant data — wrapped to avoid 500 on invalid token
+  let variantData: any;
+  try {
+    const variantResponse = await admin.graphql(
+      `#graphql
+        query GiftVariants($giftId: ID!, $qualifyingIds: [ID!]!) {
+          productVariant(id: $giftId) {
             id
             price
+            availableForSale
+            product {
+              status
+            }
+          }
+          nodes(ids: $qualifyingIds) {
+            ... on ProductVariant {
+              id
+              price
+            }
           }
         }
-      }
-    `,
-    { variables: { giftId: variantGid, qualifyingIds: qualifyingVariantGids } },
-  );
-  const variantData: any = await variantResponse.json();
+      `,
+      { variables: { giftId: variantGid, qualifyingIds: qualifyingVariantGids } },
+    );
+    variantData = await variantResponse.json();
+  } catch (e: any) {
+    console.error("[gift-code] Admin API variant query failed:", e?.message || e);
+    return corsJson(
+      { error: "Shop connection error. Please reopen the app in Shopify admin to refresh the connection." },
+      { status: 502 },
+    );
+  }
+
   const variant = variantData.data?.productVariant;
   const price = Math.round(Number(variant?.price || 0) * 100);
 
@@ -145,60 +159,72 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
   const code = `GIFT-${randomBytes(12).toString("hex").toUpperCase()}`;
   const now = new Date();
   const endsAt = new Date(now.getTime() + 30 * 60 * 1000);
-  const discountResponse = await admin.graphql(
-    `#graphql
-      mutation CreateGiftCode($bxgyCodeDiscount: DiscountCodeBxgyInput!) {
-        discountCodeBxgyCreate(bxgyCodeDiscount: $bxgyCodeDiscount) {
-          codeDiscountNode {
-            id
-          }
-          userErrors {
-            field
-            message
-            code
+
+  // Create discount code — wrapped to avoid 500 on invalid token
+  let discountData: any;
+  try {
+    const discountResponse = await admin.graphql(
+      `#graphql
+        mutation CreateGiftCode($bxgyCodeDiscount: DiscountCodeBxgyInput!) {
+          discountCodeBxgyCreate(bxgyCodeDiscount: $bxgyCodeDiscount) {
+            codeDiscountNode {
+              id
+            }
+            userErrors {
+              field
+              message
+              code
+            }
           }
         }
-      }
-    `,
-    {
-      variables: {
-        bxgyCodeDiscount: {
-          title: `Gift ${code}`,
-          code,
-          startsAt: now.toISOString(),
-          endsAt: endsAt.toISOString(),
-          context: { all: "ALL" },
-          customerBuys: {
-            value: { amount: (minimumPurchase / 100).toFixed(2) },
-            items: {
-              products: { productVariantsToAdd: qualifyingVariantGids },
+      `,
+      {
+        variables: {
+          bxgyCodeDiscount: {
+            title: `Gift ${code}`,
+            code,
+            startsAt: now.toISOString(),
+            endsAt: endsAt.toISOString(),
+            context: { all: "ALL" },
+            customerBuys: {
+              value: { amount: (minimumPurchase / 100).toFixed(2) },
+              items: {
+                products: { productVariantsToAdd: qualifyingVariantGids },
+              },
+              isOneTimePurchase: true,
+              isSubscription: false,
             },
-            isOneTimePurchase: true,
-            isSubscription: false,
-          },
-          customerGets: {
-            value: {
-              discountOnQuantity: {
-                quantity: "1",
-                effect: { percentage: 1 },
+            customerGets: {
+              value: {
+                discountOnQuantity: {
+                  quantity: "1",
+                  effect: { percentage: 1 },
+                },
+              },
+              items: {
+                products: { productVariantsToAdd: [variantGid] },
               },
             },
-            items: {
-              products: { productVariantsToAdd: [variantGid] },
+            combinesWith: {
+              orderDiscounts: true,
+              productDiscounts: true,
+              shippingDiscounts: true,
             },
+            usageLimit: 1,
+            appliesOncePerCustomer: false,
           },
-          combinesWith: {
-            orderDiscounts: true,
-            productDiscounts: true,
-            shippingDiscounts: true,
-          },
-          usageLimit: 1,
-          appliesOncePerCustomer: false,
         },
       },
-    },
-  );
-  const discountData: any = await discountResponse.json();
+    );
+    discountData = await discountResponse.json();
+  } catch (e: any) {
+    console.error("[gift-code] Discount creation failed:", e?.message || e);
+    return corsJson(
+      { error: "Shop connection error. Please reopen the app in Shopify admin to refresh the connection." },
+      { status: 502 },
+    );
+  }
+
   const errors = discountData.data?.discountCodeBxgyCreate?.userErrors || [];
 
   if (errors.length > 0 || !discountData.data?.discountCodeBxgyCreate?.codeDiscountNode) {
