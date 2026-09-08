@@ -1,6 +1,0 @@
-type = "cart_transform"
-name = "Gift Cart Transform"
-
-[[extensions.targeting]]
-target = "cart.transform"
-query = "src/graphql/cart_transform.graphql"
