@@ -11,16 +11,25 @@ datasource db {
 
 // Shopify OAuth sessions (required by @shopify/shopify-app-session-storage-prisma)
 model Session {
-  id          String   @id
-  shop        String
-  state       String
-  isOnline    Boolean  @default(false)
-  scope       String?
-  expiresAt   DateTime?
-  accessToken String
+  id               String   @id
+  shop             String
+  state            String
+  isOnline         Boolean  @default(false)
+  scope            String?
+  expires          DateTime?
+  expiresAt        DateTime?
+  accessToken      String
+  userId           BigInt?
+  firstName        String?
+  lastName         String?
+  email            String?
+  accountOwner     Boolean?
+  locale           String?
+  collaborator     Boolean?
+  emailVerified    Boolean?
   onlineAccessInfo Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([shop])
 }
