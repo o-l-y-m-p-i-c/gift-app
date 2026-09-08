@@ -1,0 +1,37 @@
+query CartTransform {
+  cart {
+    lines {
+      id
+      merchandise {
+        ... on ProductVariant {
+          id
+          product {
+            id
+            title
+          }
+        }
+      }
+      attributes {
+        key
+        value
+      }
+      cost {
+        amountPerQuantity {
+          amount
+        }
+      }
+      price {
+        amount
+      }
+      quantity
+    }
+    cost {
+      subtotalAmount {
+        amount
+      }
+      totalAmount {
+        amount
+      }
+    }
+  }
+}

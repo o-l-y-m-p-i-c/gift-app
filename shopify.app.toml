@@ -1,0 +1,45 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "969b879ff2fc49642ac1a83621577c27"
+name = "Davines Gift App"
+application_url = "https://09520f4c5f671e.lhr.life"
+embedded = true
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders-create"
+  topics = [ "orders/create" ]
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_app_proxy,write_cart_transforms,write_discounts,read_orders,read_products,write_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ "https://09520f4c5f671e.lhr.life/auth/callback" ]
+
+[pos]
+embedded = false
+
+[app_proxy]
+url = "/api"
+prefix = "apps"
+subpath = "gift-threshold"
+
+[[extensions]]
+type = "theme_app_extension"
+name = "Gift Widget"
+path = "extensions/gift-widget"
+
+[[extensions]]
+type = "cart_transform"
+name = "Gift Cart Transform"
+path = "extensions/cart-transform"
+
+[[extensions]]
+type = "ui_extension"
+name = "Gift Checkout Block"
+path = "extensions/checkout-ui"
