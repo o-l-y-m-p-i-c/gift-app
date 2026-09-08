@@ -2,7 +2,7 @@
 
 client_id = "969b879ff2fc49642ac1a83621577c27"
 name = "Davines Gift App"
-application_url = "https://09520f4c5f671e.lhr.life"
+application_url = "https://gift-app-uvlp.onrender.com"
 embedded = true
 
 [webhooks]
@@ -19,7 +19,7 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://09520f4c5f671e.lhr.life/auth/callback" ]
+redirect_urls = [ "https://gift-app-uvlp.onrender.com/auth/callback" ]
 
 [pos]
 embedded = false

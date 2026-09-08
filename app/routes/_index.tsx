@@ -9,7 +9,14 @@ import {
   Grid,
   Badge,
 } from "@shopify/polaris";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Link as RemixLink } from "@remix-run/react";
+import { authenticate } from "~/shopify.server";
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  await authenticate.admin(request);
+  return null;
+}
 
 export default function Index() {
   return (

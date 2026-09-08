@@ -1,9 +1,9 @@
-import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
+import type { LinksFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData } from "@remix-run/react";
+import { Link, Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData } from "@remix-run/react";
+import { NavMenu } from "@shopify/app-bridge-react";
 import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-remix/react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
-import shopify from "~/shopify.server";
 
 export const links: LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -11,8 +11,7 @@ export const links: LinksFunction = () => [
   { rel: "stylesheet", href: polarisStyles },
 ];
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  await shopify.authenticate.admin(request);
+export function loader() {
   return json({ apiKey: process.env.SHOPIFY_API_KEY || "" });
 }
 
@@ -38,6 +37,12 @@ export default function App() {
   const { apiKey } = useLoaderData<typeof loader>();
   return (
     <ShopifyAppProvider isEmbeddedApp apiKey={apiKey}>
+      <NavMenu>
+        <Link to="/" rel="home">Dashboard</Link>
+        <Link to="/app/tiers">Gift Tiers</Link>
+        <Link to="/app/settings">Settings</Link>
+        <Link to="/app/history">History</Link>
+      </NavMenu>
       <Outlet />
     </ShopifyAppProvider>
   );

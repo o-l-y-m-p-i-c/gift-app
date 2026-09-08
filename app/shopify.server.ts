@@ -20,6 +20,9 @@ const shopify = shopifyApp({
   api: {
     apiVersion: "2026-07",
   },
+  future: {
+    unstable_newEmbeddedAuthStrategy: true,
+  },
 });
 
 export default shopify;

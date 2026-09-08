@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
+import { authenticate } from "~/shopify.server";
 
 /**
  * Fetch eligible gift products for a given max price.
@@ -11,21 +11,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (preflight) return preflight;
 
   const url = new URL(request.url);
-  const shop = url.searchParams.get("shop");
   const maxPrice = parseInt(url.searchParams.get("maxPrice") || "0");
 
-  if (!shop || maxPrice <= 0) {
+  if (maxPrice <= 0) {
     return corsJson({ products: [] });
   }
 
   // Get the shop's session to access Admin API
-  const session = await prisma.session.findFirst({
-    where: { shop },
-    orderBy: { createdAt: "desc" },
-  });
+  const { admin, session } = await authenticate.public.appProxy(request);
 
-  if (!session) {
-    console.error("[api.products] No session for shop:", shop);
+  if (!admin || !session) {
+    console.error("[api.products] No offline session for app proxy request");
     return corsJson({ products: [] });
   }
 
@@ -33,25 +29,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // maxPrice is in cents, Admin API expects decimal
   const maxPriceDecimal = (maxPrice / 100).toFixed(2);
 
-  const query = `
-    query GetGiftProducts {
-      products(first: 20, query: "price:<=${maxPriceDecimal}") {
-        edges {
-          node {
+  const query = `#graphql
+    query GetGiftProducts($query: String!) {
+      productVariants(first: 20, query: $query) {
+        nodes {
+          id
+          title
+          price
+          product {
             id
             title
             status
             featuredImage {
               url
-              altText
-            }
-            variants(first: 1) {
-              edges {
-                node {
-                  id
-                  price
-                }
-              }
             }
           }
         }
@@ -60,46 +50,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
   `;
 
   try {
-    const adminUrl = `https://${shop}/admin/api/2026-07/graphql.json`;
-    const res = await fetch(adminUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": session.accessToken,
-      },
-      body: JSON.stringify({ query }),
+    const res = await admin.graphql(query, {
+      variables: { query: `price:<=${maxPriceDecimal}` },
     });
+    const data: any = await res.json();
 
-    if (!res.ok) {
-      console.error("[api.products] Admin API error:", res.status, await res.text());
-      return corsJson({ products: [] });
-    }
-
-    const data = await res.json();
     if (data.errors) {
       console.error("[api.products] GraphQL errors:", data.errors);
       return corsJson({ products: [] });
     }
 
-    const products = (data.data?.products?.edges || [])
-      .filter((edge: any) => {
-        const node = edge.node;
-        if (node.status !== "ACTIVE") return false;
-        const variant = node.variants.edges[0]?.node;
-        const priceCents = Math.round(parseFloat(variant?.price || "0") * 100);
-        return priceCents > 0 && priceCents <= maxPrice;
+    const products = (data.data?.productVariants?.nodes || [])
+      .filter((variant: any) => {
+        const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
+        return variant.product.status === "ACTIVE" && priceCents > 0 && priceCents <= maxPrice;
       })
-      .map((edge: any) => {
-        const node = edge.node;
-        const variant = node.variants.edges[0]?.node;
-        return {
-          productId: node.id,
-          variantId: variant?.id,
-          title: node.title,
-          price: Math.round(parseFloat(variant?.price || "0") * 100),
-          image: node.featuredImage?.url || "",
-        };
-      });
+      .map((variant: any) => ({
+        productId: variant.product.id,
+        variantId: variant.id,
+        title:
+          variant.title === "Default Title"
+            ? variant.product.title
+            : `${variant.product.title} — ${variant.title}`,
+        price: Math.round(parseFloat(variant.price || "0") * 100),
+        image: variant.product.featuredImage?.url || "",
+      }));
 
     return corsJson({ products });
   } catch (e) {
