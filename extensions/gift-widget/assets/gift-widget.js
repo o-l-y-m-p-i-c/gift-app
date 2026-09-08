@@ -27,6 +27,7 @@
   let lastThresholdBase = 0;
   let lastActiveTierId = null;
   let giftProducts = [];
+  let cartRequest = null;
 
   // ─── Init ──────────────────────────────────────────────────
 
@@ -63,8 +64,20 @@
   // ─── Cart logic ────────────────────────────────────────────
 
   async function fetchCart() {
-    const res = await fetch("/cart.js");
-    return res.json();
+    if (cartRequest) return cartRequest;
+
+    cartRequest = fetch("/cart.js").then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`Unable to load cart (${response.status}).`);
+      }
+      return response.json();
+    });
+
+    try {
+      return await cartRequest;
+    } finally {
+      cartRequest = null;
+    }
   }
 
   function getThresholdBase(cart) {
@@ -131,12 +144,11 @@
     if (hasGiftInCart(cart)) {
       const giftItem = getGiftItem(cart);
       if (giftItem && giftItem.price > maxGiftPrice) {
-        await removeGiftFromCart(cart);
+        const freshCart = await removeGiftFromCart(cart);
         if (settings.showRemovalNotification) {
           showNotification("Your gift was removed. Please choose a new gift.", "info");
         }
-        const freshCart = await fetchCart();
-        await renderWidget(freshCart, activeTier, maxGiftPrice);
+        if (freshCart) await renderWidget(freshCart, activeTier, maxGiftPrice);
         return;
       }
       // Gift still valid → just show "gift selected" state
@@ -289,8 +301,6 @@
 
       const cart = await fetchCart();
       await onCartUpdate(cart);
-      // Trigger theme cart refresh
-      document.dispatchEvent(new CustomEvent("cart:updated", { detail: { cart } }));
     } catch (e) {
       console.error("[Gift Widget] Failed to add gift:", e);
       showNotification(e.message || "Unable to add this gift.", "warning");
@@ -305,7 +315,7 @@
     if (!giftItem) return;
 
     try {
-      await fetch("/cart/change.js", {
+      const response = await fetch("/cart/change.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -313,17 +323,20 @@
           quantity: 0,
         }),
       });
+      if (!response.ok) {
+        throw new Error(`Unable to remove gift (${response.status}).`);
+      }
+      return response.json();
     } catch (e) {
       console.error("[Gift Widget] Failed to remove gift:", e);
+      return null;
     }
   }
 
   async function removeGift() {
     const cart = await fetchCart();
-    await removeGiftFromCart(cart);
-    const freshCart = await fetchCart();
-    await onCartUpdate(freshCart);
-    document.dispatchEvent(new CustomEvent("cart:updated", { detail: { cart: freshCart } }));
+    const freshCart = await removeGiftFromCart(cart);
+    if (freshCart) await onCartUpdate(freshCart);
   }
 
   // ─── Cart update listener ──────────────────────────────────
@@ -331,24 +344,11 @@
   function listenForCartUpdates() {
     // Listen for theme cart events
     document.addEventListener("cart:updated", async (event) => {
-      const cart = event.detail?.cart || (await fetchCart());
+      const eventCart = event.detail?.cart;
+      const cart = typeof eventCart?.total_price === "number" ? eventCart : await fetchCart();
       await onCartUpdate(cart);
     });
 
-    // Fallback: poll cart every 3 seconds
-    let lastTotal = null;
-    setInterval(async () => {
-      try {
-        const cart = await fetchCart();
-        const currentTotal = cart.total_price;
-        if (currentTotal !== lastTotal) {
-          lastTotal = currentTotal;
-          await onCartUpdate(cart);
-        }
-      } catch (e) {
-        // ignore
-      }
-    }, 3000);
   }
 
   // ─── Utils ─────────────────────────────────────────────────

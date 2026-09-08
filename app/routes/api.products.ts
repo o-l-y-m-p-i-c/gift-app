@@ -33,10 +33,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     query GetGiftProducts($query: String!) {
       productVariants(first: 20, query: $query) {
         nodes {
-          id
           legacyResourceId
           title
           price
+          availableForSale
           product {
             id
             title
@@ -64,7 +64,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const products = (data.data?.productVariants?.nodes || [])
       .filter((variant: any) => {
         const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
-        return variant.product.status === "ACTIVE" && priceCents > 0 && priceCents <= maxPrice;
+        return (
+          variant.availableForSale &&
+          variant.product.status === "ACTIVE" &&
+          priceCents > 0 &&
+          priceCents <= maxPrice
+        );
       })
       .map((variant: any) => ({
         productId: variant.product.id,
