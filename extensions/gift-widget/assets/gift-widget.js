@@ -191,7 +191,7 @@
             <p class="gift-widget__name">${p.title}</p>
             <p class="gift-widget__price">${formatPrice(p.price)}</p>
           </div>
-          <button class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}', '${p.title.replace(/'/g, "\\'")}')">
+          <button type="button" class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}')">
             Select
           </button>
         </div>
@@ -261,26 +261,42 @@
 
   // ─── Cart actions ──────────────────────────────────────────
 
-  async function selectGift(variantId, productTitle) {
-    const formData = new FormData();
-    formData.append("id", variantId);
-    formData.append("quantity", "1");
-    formData.append(`properties[${GIFT_PROPERTY_KEY}]`, GIFT_PROPERTY_VALUE);
+  async function selectGift(variantId) {
+    const buttons = document.querySelectorAll(".gift-widget__select");
+    buttons.forEach((button) => {
+      button.disabled = true;
+    });
 
     try {
       const res = await fetch("/cart/add.js", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              id: Number(variantId),
+              quantity: 1,
+              properties: { [GIFT_PROPERTY_KEY]: GIFT_PROPERTY_VALUE },
+            },
+          ],
+        }),
       });
 
-      if (res.ok) {
-        const cart = await fetchCart();
-        await onCartUpdate(cart);
-        // Trigger theme cart refresh
-        document.dispatchEvent(new CustomEvent("cart:updated", { detail: { cart } }));
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.description || "Unable to add this gift.");
       }
+
+      const cart = await fetchCart();
+      await onCartUpdate(cart);
+      // Trigger theme cart refresh
+      document.dispatchEvent(new CustomEvent("cart:updated", { detail: { cart } }));
     } catch (e) {
       console.error("[Gift Widget] Failed to add gift:", e);
+      showNotification(e.message || "Unable to add this gift.", "warning");
+      buttons.forEach((button) => {
+        button.disabled = false;
+      });
     }
   }
 
@@ -293,7 +309,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          line: giftItem.line + 1,
+          id: giftItem.key,
           quantity: 0,
         }),
       });

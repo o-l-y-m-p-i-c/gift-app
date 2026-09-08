@@ -34,6 +34,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       productVariants(first: 20, query: $query) {
         nodes {
           id
+          legacyResourceId
           title
           price
           product {
@@ -67,7 +68,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       })
       .map((variant: any) => ({
         productId: variant.product.id,
-        variantId: variant.id,
+        variantId: variant.legacyResourceId.toString(),
         title:
           variant.title === "Default Title"
             ? variant.product.title

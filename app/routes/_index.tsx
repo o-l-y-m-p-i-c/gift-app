@@ -11,10 +11,14 @@ import {
 } from "@shopify/polaris";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Link as RemixLink } from "@remix-run/react";
+import { ensureGiftDiscount } from "~/lib/gift-discount.server";
 import { authenticate } from "~/shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
+  await ensureGiftDiscount(admin).catch((error) =>
+    console.error("[gift-discount] Setup failed:", error),
+  );
   return null;
 }
 

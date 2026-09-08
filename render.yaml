@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npx prisma generate && npm run build
-    startCommand: npx prisma migrate deploy && npm start
+    startCommand: npx prisma db push --accept-data-loss && npm start
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -15,7 +15,7 @@ services:
       - key: SHOPIFY_APP_URL
         sync: false
       - key: SCOPES
-        value: read_products,write_products,read_orders,write_discounts,write_cart_transforms,write_app_proxy
+        value: read_products,write_products,read_orders,read_discounts,write_discounts,write_app_proxy
       - key: NODE_ENV
         value: production
       - key: PORT

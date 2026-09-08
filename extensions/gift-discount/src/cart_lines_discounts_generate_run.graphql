@@ -1,0 +1,22 @@
+query Input {
+  cart {
+    lines {
+      id
+      quantity
+      gift: attribute(key: "_gift") {
+        value
+      }
+      cost {
+        amountPerQuantity {
+          amount
+        }
+        subtotalAmount {
+          amount
+        }
+      }
+    }
+  }
+  discount {
+    discountClasses
+  }
+}
