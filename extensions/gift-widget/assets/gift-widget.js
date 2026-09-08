@@ -280,6 +280,9 @@
       button.disabled = true;
     });
 
+    const shopDomain =
+      document.getElementById("gift-widget-container")?.dataset.shop || "";
+
     try {
       const initialCart = await fetchCart();
       const qualifyingVariantIds = initialCart.items
@@ -288,7 +291,12 @@
       const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ variantId, tierId, qualifyingVariantIds }),
+        body: JSON.stringify({
+          variantId,
+          tierId,
+          qualifyingVariantIds,
+          shop: shopDomain,
+        }),
       });
       const codeData = await codeResponse.json().catch(() => ({}));
       if (!codeResponse.ok || !codeData.code) {

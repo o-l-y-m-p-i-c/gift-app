@@ -2,18 +2,73 @@ import { randomBytes } from "node:crypto";
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { authenticate } from "~/shopify.server";
+import { authenticate, unauthenticated } from "~/shopify.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
-  const { admin, session } = await authenticate.public.appProxy(request);
-  if (!admin || !session) {
-    return corsJson({ error: "App session is unavailable." }, { status: 401 });
+  let admin: any = null;
+  let shopDomain: string = "";
+
+  // Strategy 1: app proxy auth
+  try {
+    const result = await authenticate.public.appProxy(request);
+    if (result?.admin && result?.session) {
+      admin = result.admin;
+      shopDomain = result.session.shop;
+    }
+  } catch (e) {
+    console.error("[gift-code] appProxy auth failed:", e);
   }
 
+  // Strategy 2: fall back to unauthenticated.admin using shop from body or DB
+  if (!admin) {
+    const body = await request.json().catch(() => null);
+    const shopParam = String(body?.shop || "");
+    shopDomain = (shopParam.includes(".myshopify.com")
+      ? shopParam
+      : (await resolveShopDomain(shopParam)) || "") || "";
+
+    if (shopDomain) {
+      try {
+        const { admin: unauthAdmin } = await unauthenticated.admin(shopDomain);
+        admin = unauthAdmin;
+      } catch (e) {
+        console.error("[gift-code] unauthenticated.admin fallback failed:", e);
+      }
+    }
+
+    if (!admin) {
+      return corsJson({ error: "App session is unavailable." }, { status: 401 });
+    }
+
+    // Re-parse body since we already consumed it in the fallback path
+    return handleGiftCode(admin, shopDomain, body);
+  }
+
+  // Normal path: parse body after app proxy auth
   const body = await request.json().catch(() => null);
+  return handleGiftCode(admin, shopDomain, body);
+}
+
+async function resolveShopDomain(shopParam: string): Promise<string | null> {
+  if (shopParam.includes(".myshopify.com")) return shopParam;
+
+  const session = await prisma.session.findFirst({
+    orderBy: { createdAt: "desc" },
+    select: { shop: true },
+  });
+  if (session?.shop?.includes(".myshopify.com")) return session.shop;
+
+  const tier = await prisma.giftTier.findFirst({
+    where: { shopId: { contains: ".myshopify.com" } },
+    select: { shopId: true },
+  });
+  return tier?.shopId || null;
+}
+
+async function handleGiftCode(admin: any, shopDomain: string, body: any) {
   const variantId = String(body?.variantId || "");
   const tierId = Number(body?.tierId);
   const qualifyingVariantIds: string[] = Array.isArray(body?.qualifyingVariantIds)
@@ -32,7 +87,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const tier = await prisma.giftTier.findFirst({
-    where: { id: tierId, shopId: session.shop, active: true },
+    where: { id: tierId, shopId: shopDomain, active: true },
   });
 
   if (!tier) {
