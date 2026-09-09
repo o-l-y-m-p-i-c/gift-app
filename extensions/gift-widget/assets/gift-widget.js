@@ -182,7 +182,10 @@
   }
 
   function getTotalGiftValue(cart) {
-    return getGiftItems(cart).reduce((sum, item) => sum + item.final_line_price, 0);
+    // Use line_price (before discounts) not final_line_price (after discounts).
+    // After applying the discount code, final_line_price becomes 0, which would
+    // make the widget think no budget has been used.
+    return getGiftItems(cart).reduce((sum, item) => sum + item.line_price, 0);
   }
 
   function getThresholdBase(cart) {
@@ -218,7 +221,7 @@
     const activeTier = findActiveTier(thresholdBase);
     const nextTier = findNextTier(thresholdBase);
     const giftItems = getGiftItems(cart);
-    const totalGiftValue = giftItems.reduce((sum, item) => sum + item.final_line_price, 0);
+    const totalGiftValue = giftItems.reduce((sum, item) => sum + item.line_price, 0);
     const remainingBudget = activeTier ? activeTier.giftAmount - totalGiftValue : 0;
 
     // Enforce gift quantity = 1. If any gift has quantity > 1, reset it.
@@ -310,7 +313,7 @@
     if (!el) return;
 
     const giftItems = getGiftItems(cart);
-    const totalGiftValue = giftItems.reduce((sum, item) => sum + item.final_line_price, 0);
+    const totalGiftValue = giftItems.reduce((sum, item) => sum + item.line_price, 0);
     const remainingBudget = activeTier ? activeTier.giftAmount - totalGiftValue : 0;
 
     // ── Progress bar section ──
@@ -390,7 +393,7 @@
             <img src="${item.image || ""}" alt="${item.product_title}" class="gift-widget__selected-image" loading="lazy" />
             <div class="gift-widget__selected-info">
               <p class="gift-widget__selected-name">${item.product_title}</p>
-              <p class="gift-widget__selected-price">${formatPrice(item.final_line_price)}</p>
+              <p class="gift-widget__selected-price">${formatPrice(item.line_price)}</p>
             </div>
             <button type="button"
               class="gift-widget__selected-remove"
@@ -641,7 +644,7 @@
         }),
       });
       const codeData = await codeResponse.json().catch(() => ({}));
-      if (!codeResponse.ok || !codeData.codes || codeData.codes.length === 0) {
+      if (!codeResponse.ok || !codeData.code) {
         throw new Error(codeData.error || "Unable to create gift discount.");
       }
 
@@ -663,13 +666,13 @@
       }
       giftAdded = true;
 
-      // 3. Apply ALL discount codes — replace old GIFT-* codes with the new ones
+      // 3. Apply discount code — replace old GIFT-* codes with the new one
       const cart = await fetchCart();
       const nonGiftCodes = (cart.discount_codes || [])
         .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
         .map((d) => d.code);
-      const discountStr = [...nonGiftCodes, ...codeData.codes].join(",");
-      console.log("[Gift Widget] Applying discount codes:", discountStr);
+      const discountStr = [...nonGiftCodes, codeData.code].join(",");
+      console.log("[Gift Widget] Applying discount:", discountStr);
       const updateResponse = await fetch("/cart/update.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -767,8 +770,8 @@
         });
         const codeData = await codeResponse.json().catch(() => ({}));
 
-        if (codeResponse.ok && codeData.codes && codeData.codes.length > 0) {
-          // Replace old GIFT-* codes with the new ones
+        if (codeResponse.ok && codeData.code) {
+          // Replace old GIFT-* codes with the new one
           const nonGiftCodes = (updatedCart.discount_codes || [])
             .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
             .map((d) => d.code);
@@ -776,7 +779,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              discount: [...nonGiftCodes, ...codeData.codes].join(","),
+              discount: [...nonGiftCodes, codeData.code].join(","),
             }),
           });
         }
