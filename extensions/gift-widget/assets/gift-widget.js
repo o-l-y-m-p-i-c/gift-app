@@ -224,24 +224,6 @@
     const totalGiftValue = giftItems.reduce((sum, item) => sum + item.line_price, 0);
     const remainingBudget = activeTier ? activeTier.giftAmount - totalGiftValue : 0;
 
-    // Enforce gift quantity = 1. If any gift has quantity > 1, reset it.
-    const oversizedGifts = giftItems.filter((item) => item.quantity > 1);
-    if (oversizedGifts.length > 0) {
-      for (const gift of oversizedGifts) {
-        try {
-          await fetch("/cart/change.js", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: gift.key, quantity: 1 }),
-          });
-        } catch (e) {
-          console.error("[Gift Widget] Failed to reset gift quantity:", e);
-        }
-      }
-      showNotification("Gift items are limited to 1 per product.", "warning");
-      cart = await fetchCart();
-    }
-
     // Disable quantity inputs on gift items in the cart DOM
     disableGiftQuantityInputs(cart);
 
@@ -839,11 +821,12 @@
   // ─── Cart update listener ──────────────────────────────────
 
   /**
-   * Intercept ALL cart change requests (fetch, XMLHttpRequest, form submit)
-   * to prevent quantity increases on gift items. Gift items must stay at qty 1.
+   * Intercept cart change requests to prevent quantity INCREASES on gift items.
+   * Legitimate duplicates (same gift added twice → qty=2) are allowed.
+   * Abuse (increasing qty from cart table) is blocked.
+   * BXGY discountOnQuantity already limits free items server-side.
    */
   function interceptCartChanges() {
-    // ── 1. Intercept fetch() ──
     const originalFetch = window.fetch;
     window.fetch = async function (input, init) {
       const url = typeof input === "string" ? input : input?.url || "";
@@ -856,28 +839,36 @@
           if (cart) {
             const giftKeys = new Set(getGiftItems(cart).map((item) => item.key));
             const giftVariantIds = new Set(getGiftItems(cart).map((item) => String(item.variant_id)));
+            const giftQtyByKey = new Map(getGiftItems(cart).map((item) => [item.key, item.quantity]));
 
             // /cart/change.js with id (key) or line (1-based index)
             if (url.includes("/cart/change.js")) {
-              if (parsed.id && giftKeys.has(parsed.id) && parsed.quantity > 1) {
-                console.warn("[Gift Widget] Blocked qty increase (id)");
-                showNotification("Gift items are limited to 1 quantity.", "warning");
-                return new Response(JSON.stringify(cart), {
-                  status: 200,
-                  headers: { "Content-Type": "application/json" },
-                });
-              }
-              // Dawn uses line (1-based index) + quantity
-              if (parsed.line && parsed.quantity > 1) {
-                const lineIndex = parsed.line - 1;
-                const item = cart.items[lineIndex];
-                if (item && giftKeys.has(item.key)) {
-                  console.warn("[Gift Widget] Blocked qty increase (line)");
-                  showNotification("Gift items are limited to 1 quantity.", "warning");
+              // Block qty INCREASE on gift items (new qty > current qty)
+              if (parsed.id && giftKeys.has(parsed.id)) {
+                const currentQty = giftQtyByKey.get(parsed.id) || 0;
+                if (parsed.quantity > currentQty) {
+                  console.warn("[Gift Widget] Blocked qty increase on gift item");
+                  showNotification("Gift quantity cannot be increased from cart. Use the gift selector to add more.", "warning");
                   return new Response(JSON.stringify(cart), {
                     status: 200,
                     headers: { "Content-Type": "application/json" },
                   });
+                }
+              }
+              // Dawn uses line (1-based index) + quantity
+              if (parsed.line) {
+                const lineIndex = parsed.line - 1;
+                const item = cart.items[lineIndex];
+                if (item && giftKeys.has(item.key)) {
+                  const currentQty = giftQtyByKey.get(item.key) || 0;
+                  if (parsed.quantity > currentQty) {
+                    console.warn("[Gift Widget] Blocked qty increase (line)");
+                    showNotification("Gift quantity cannot be increased from cart. Use the gift selector to add more.", "warning");
+                    return new Response(JSON.stringify(cart), {
+                      status: 200,
+                      headers: { "Content-Type": "application/json" },
+                    });
+                  }
                 }
               }
             }
@@ -888,31 +879,34 @@
               if (Array.isArray(parsed.updates)) {
                 const newUpdates = [...parsed.updates];
                 cart.items.forEach((item, index) => {
-                  if (giftKeys.has(item.key) && newUpdates[index] > 1) {
-                    newUpdates[index] = 1;
+                  if (giftKeys.has(item.key) && newUpdates[index] > item.quantity) {
+                    newUpdates[index] = item.quantity;
                     modified = true;
                   }
                 });
                 if (modified) {
-                  showNotification("Gift items are limited to 1 quantity.", "warning");
+                  showNotification("Gift quantity cannot be increased from cart.", "warning");
                   return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, updates: newUpdates }) });
                 }
               } else if (typeof parsed.updates === "object") {
                 const newUpdates = { ...parsed.updates };
                 for (const key of Object.keys(newUpdates)) {
-                  if (giftKeys.has(key) && newUpdates[key] > 1) {
-                    newUpdates[key] = 1;
-                    modified = true;
+                  if (giftKeys.has(key)) {
+                    const currentQty = giftQtyByKey.get(key) || 0;
+                    if (newUpdates[key] > currentQty) {
+                      newUpdates[key] = currentQty;
+                      modified = true;
+                    }
                   }
                 }
                 if (modified) {
-                  showNotification("Gift items are limited to 1 quantity.", "warning");
+                  showNotification("Gift quantity cannot be increased from cart.", "warning");
                   return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, updates: newUpdates }) });
                 }
               }
             }
 
-            // /cart/add.js — block adding more of an existing gift variant
+            // /cart/add.js — block adding with qty > 1 for existing gift variants
             if (url.includes("/cart/add.js") && parsed.items) {
               let modified = false;
               const newItems = parsed.items.map((item) => {
@@ -923,7 +917,7 @@
                 return item;
               });
               if (modified) {
-                showNotification("Gift items are limited to 1 quantity.", "warning");
+                showNotification("Gift items are limited to 1 quantity per add.", "warning");
                 return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, items: newItems }) });
               }
             }
@@ -974,23 +968,25 @@
       if (!cart) return;
 
       const giftKeys = new Set(getGiftItems(cart).map((item) => item.key));
+      const giftQtyByKey = new Map(getGiftItems(cart).map((item) => [item.key, item.quantity]));
       if (giftKeys.size === 0) return;
 
-      // Check if any gift item quantity is being increased
+      // Check if any gift item quantity is being increased beyond current
       const updatesEntries = formData.getAll("updates[]");
       let hasAbuse = false;
       cart.items.forEach((item, index) => {
-        if (giftKeys.has(item.key) && updatesEntries[index] && Number(updatesEntries[index]) > 1) {
-          hasAbuse = true;
+        if (giftKeys.has(item.key) && updatesEntries[index]) {
+          const currentQty = giftQtyByKey.get(item.key) || 0;
+          if (Number(updatesEntries[index]) > currentQty) {
+            hasAbuse = true;
+          }
         }
       });
 
       if (hasAbuse) {
         e.preventDefault();
         e.stopPropagation();
-        showNotification("Gift items are limited to 1 quantity.", "warning");
-        // Reset the form quantities for gift items
-        await enforceGiftQuantities(cart);
+        showNotification("Gift quantity cannot be increased from cart.", "warning");
       }
     }, true);
   }
@@ -1016,27 +1012,6 @@
   }
 
   /**
-   * Force-reset all gift items to quantity 1.
-   * Called after any cart change is detected.
-   */
-  async function enforceGiftQuantities(cart) {
-    const gifts = getGiftItems(cart);
-    for (const gift of gifts) {
-      if (gift.quantity > 1) {
-        try {
-          await fetch("/cart/change.js", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: gift.key, quantity: 1 }),
-          });
-        } catch (e) {
-          console.error("[Gift Widget] Failed to reset gift quantity:", e);
-        }
-      }
-    }
-  }
-
-  /**
    * Disable quantity inputs on gift line items in the cart DOM.
    * This prevents the user from even trying to increase the quantity.
    */
@@ -1046,6 +1021,7 @@
 
     const giftKeys = new Set(gifts.map((g) => g.key));
     const giftVariantIds = new Set(gifts.map((g) => String(g.variant_id)));
+    const giftQtyByKey = new Map(gifts.map((g) => [g.key, g.quantity]));
 
     // Dawn cart page: quantity inputs inside cart-items
     const cartItems = document.querySelectorAll(
@@ -1060,21 +1036,27 @@
       const isGift = (key && giftKeys.has(key)) || (variantId && giftVariantIds.has(variantId));
 
       if (isGift) {
-        // Disable quantity inputs
+        const currentQty = (key && giftQtyByKey.get(key)) || 1;
+        // Lock quantity inputs to current value — prevent increases
         const inputs = item.querySelectorAll("input[name='quantity'], input[name='updates[]'], .quantity__input, [data-quantity-input]");
         inputs.forEach((input) => {
-          input.disabled = true;
-          input.max = 1;
-          input.min = 1;
-          input.value = 1;
+          input.max = String(currentQty);
+          input.min = "1";
+          input.value = String(currentQty);
           input.setAttribute("readonly", "readonly");
         });
-        // Disable +/- buttons
+        // Disable only the + button, keep - button for removal
         const buttons = item.querySelectorAll(".quantity__button, [data-quantity-button]");
         buttons.forEach((btn) => {
-          btn.disabled = true;
-          btn.style.pointerEvents = "none";
-          btn.style.opacity = "0.5";
+          const isPlus = btn.classList.contains("quantity__button--plus") ||
+                         btn.getAttribute("data-action") === "increment" ||
+                         (btn.getAttribute("aria-label") || "").includes("Increase") ||
+                         btn.querySelector(".icon-plus, [data-icon='plus']");
+          if (isPlus) {
+            btn.disabled = true;
+            btn.style.pointerEvents = "none";
+            btn.style.opacity = "0.5";
+          }
         });
       }
     });
