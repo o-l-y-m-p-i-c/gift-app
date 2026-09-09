@@ -151,15 +151,13 @@ async function handleGiftCode(shopDomain: string, body: any) {
           context: {
             all: "ALL",
           },
-          // 100% off on the gift variants, but ONLY for the exact quantity
-          // of gifts selected. This prevents abuse where a user increases
-          // the quantity of gift items in the cart.
+          // 100% off on the gift variants.
+          // Note: discountOnQuantity is only for BXGY, so we use percentage.
+          // Quantity abuse is prevented by the frontend fetch interceptor
+          // and by onCartUpdate auto-resetting gift quantities to 1.
           customerGets: {
             value: {
-              discountOnQuantity: {
-                quantity: String(giftVariantIds.length),
-                effect: { percentage: 1.0 },
-              },
+              percentage: 1.0,
             },
             items: {
               products: {

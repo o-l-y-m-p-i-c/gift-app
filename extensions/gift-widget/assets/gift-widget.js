@@ -216,6 +216,24 @@
     const totalGiftValue = giftItems.reduce((sum, item) => sum + item.final_line_price, 0);
     const remainingBudget = activeTier ? activeTier.giftAmount - totalGiftValue : 0;
 
+    // Enforce gift quantity = 1. If any gift has quantity > 1, reset it.
+    const oversizedGifts = giftItems.filter((item) => item.quantity > 1);
+    if (oversizedGifts.length > 0) {
+      for (const gift of oversizedGifts) {
+        try {
+          await fetch("/cart/change.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: gift.key, quantity: 1 }),
+          });
+        } catch (e) {
+          console.error("[Gift Widget] Failed to reset gift quantity:", e);
+        }
+      }
+      showNotification("Gift items are limited to 1 per product.", "warning");
+      cart = await fetchCart();
+    }
+
     const tierChanged = activeTier?.id !== lastActiveTierId;
     if (tierChanged) {
       if (lastActiveTierId !== null && activeTier && settings.showLevelUpNotification) {
