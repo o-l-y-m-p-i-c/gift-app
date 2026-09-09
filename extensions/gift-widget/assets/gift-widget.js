@@ -597,11 +597,22 @@
         .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
         .map((item) => String(item.variant_id));
 
-      // 1. Request discount code
+      // Collect ALL gift variant IDs: existing gifts + the new one
+      const existingGiftVariantIds = initialCart.items
+        .filter((item) => item.properties?.[GIFT_PROPERTY_KEY])
+        .map((item) => String(item.variant_id));
+      const allGiftVariantIds = [...new Set([...existingGiftVariantIds, variantId])];
+
+      // 1. Request a single discount code covering ALL gifts
       const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ variantId, tierId, qualifyingVariantIds, shop: shopDomain }),
+        body: JSON.stringify({
+          giftVariantIds: allGiftVariantIds,
+          tierId,
+          qualifyingVariantIds,
+          shop: shopDomain,
+        }),
       });
       const codeData = await codeResponse.json().catch(() => ({}));
       if (!codeResponse.ok || !codeData.code) {
@@ -626,16 +637,16 @@
       }
       giftAdded = true;
 
-      // 3. Apply discount code
+      // 3. Apply discount code — replace old GIFT-* codes with the new combined one
       const cart = await fetchCart();
-      const discountCodes = (cart.discount_codes || [])
-        .filter((d) => d.applicable !== false && d.code)
+      const nonGiftCodes = (cart.discount_codes || [])
+        .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
         .map((d) => d.code);
       const updateResponse = await fetch("/cart/update.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          discount: [...new Set([...discountCodes, codeData.code])].join(","),
+          discount: [...nonGiftCodes, codeData.code].join(","),
         }),
       });
       if (!updateResponse.ok) {
@@ -696,6 +707,68 @@
 
     try {
       await removeGiftByKey(key);
+
+      // After removing, check if there are remaining gifts.
+      // If so, create a new combined discount code for them.
+      const updatedCart = await fetchCart();
+      const remainingGifts = getGiftItems(updatedCart);
+
+      if (remainingGifts.length > 0) {
+        // Recreate discount code for remaining gifts
+        const remainingGiftVariantIds = remainingGifts.map((g) => String(g.variant_id));
+        const qualifyingVariantIds = updatedCart.items
+          .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
+          .map((item) => String(item.variant_id));
+
+        const shopDomain =
+          document.getElementById("gift-widget-container")?.dataset.shop || "";
+
+        const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            giftVariantIds: remainingGiftVariantIds,
+            tierId: lastActiveTierId,
+            qualifyingVariantIds,
+            shop: shopDomain,
+          }),
+        });
+        const codeData = await codeResponse.json().catch(() => ({}));
+
+        if (codeResponse.ok && codeData.code) {
+          // Replace old GIFT-* codes with the new one
+          const nonGiftCodes = (updatedCart.discount_codes || [])
+            .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
+            .map((d) => d.code);
+          await fetch("/cart/update.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              discount: [...nonGiftCodes, codeData.code].join(","),
+            }),
+          });
+        }
+      } else {
+        // No gifts left — remove all GIFT-* codes
+        const nonGiftCodes = (updatedCart.discount_codes || [])
+          .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
+          .map((d) => d.code);
+        if (nonGiftCodes.length > 0) {
+          await fetch("/cart/update.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ discount: nonGiftCodes.join(",") }),
+          });
+        } else {
+          // Clear all discount codes
+          await fetch("/cart/update.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ discount: "" }),
+          });
+        }
+      }
+
       await refreshCartSection();
     } catch (e) {
       console.error("[Gift Widget] Failed to remove gift:", e);

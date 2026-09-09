@@ -20,19 +20,31 @@ export async function action({ request }: ActionFunctionArgs) {
   return handleGiftCode(config.shopDomain, body);
 }
 
+/**
+ * Create a single BXGY discount code covering ALL gift variants.
+ *
+ * Body:
+ *   - giftVariantIds: string[]  — all gift variant IDs (existing + new)
+ *   - tierId: number
+ *   - qualifyingVariantIds: string[] — non-gift cart variant IDs
+ *   - shop: string
+ */
 async function handleGiftCode(shopDomain: string, body: any) {
-  const variantId = String(body?.variantId || "");
+  const giftVariantIds: string[] = Array.isArray(body?.giftVariantIds)
+    ? [...new Set<string>(body.giftVariantIds.map((id: unknown) => String(id)))]
+    : [];
   const tierId = Number(body?.tierId);
   const qualifyingVariantIds: string[] = Array.isArray(body?.qualifyingVariantIds)
     ? [...new Set<string>(body.qualifyingVariantIds.map((id: unknown) => String(id)))]
     : [];
 
   if (
-    !/^\d+$/.test(variantId) ||
+    giftVariantIds.length === 0 ||
+    giftVariantIds.length > 50 ||
+    giftVariantIds.some((id) => !/^\d+$/.test(id)) ||
     !Number.isInteger(tierId) ||
     qualifyingVariantIds.length === 0 ||
     qualifyingVariantIds.length > 100 ||
-    qualifyingVariantIds.includes(variantId) ||
     qualifyingVariantIds.some((id) => !/^\d+$/.test(id))
   ) {
     return corsJson({ error: "Invalid gift selection." }, { status: 400 });
@@ -46,33 +58,33 @@ async function handleGiftCode(shopDomain: string, body: any) {
     return corsJson({ error: "Gift tier is unavailable." }, { status: 404 });
   }
 
-  const variantGid = `gid://shopify/ProductVariant/${variantId}`;
+  const giftVariantGids = giftVariantIds.map(
+    (id) => `gid://shopify/ProductVariant/${id}`,
+  );
   const qualifyingVariantGids = qualifyingVariantIds.map(
     (id) => `gid://shopify/ProductVariant/${id}`,
   );
 
+  // Query all gift variants + qualifying variants
+  const allGids = [...giftVariantGids, ...qualifyingVariantGids];
   let variantData: any;
   try {
     variantData = await adminGraphql(
       `#graphql
-        query GiftVariants($giftId: ID!, $qualifyingIds: [ID!]!) {
-          productVariant(id: $giftId) {
-            id
-            price
-            availableForSale
-            product {
-              status
-            }
-          }
-          nodes(ids: $qualifyingIds) {
+        query GiftVariants($ids: [ID!]!) {
+          nodes(ids: $ids) {
             ... on ProductVariant {
               id
               price
+              availableForSale
+              product {
+                status
+              }
             }
           }
         }
       `,
-      { giftId: variantGid, qualifyingIds: qualifyingVariantGids },
+      { ids: allGids },
     );
   } catch (e: any) {
     console.error("[gift-code] Admin API variant query failed:", e?.message || e);
@@ -82,22 +94,34 @@ async function handleGiftCode(shopDomain: string, body: any) {
     );
   }
 
-  const variant = variantData.data?.productVariant;
-  const price = Math.round(Number(variant?.price || 0) * 100);
+  const nodes = (variantData.data?.nodes || []).filter(Boolean);
 
-  if (
-    !variant?.availableForSale ||
-    variant.product?.status !== "ACTIVE" ||
-    price <= 0 ||
-    price > tier.giftAmount
-  ) {
-    return corsJson({ error: "This product is not eligible as a gift." }, { status: 422 });
+  // First giftVariantIds.length nodes are gift variants
+  const giftNodes = nodes.slice(0, giftVariantGids.length);
+  const qualifyingNodes = nodes.slice(giftVariantGids.length);
+
+  // Validate gift variants: active, available, priced, within budget
+  let totalGiftValue = 0;
+  for (const gv of giftNodes) {
+    const price = Math.round(Number(gv?.price || 0) * 100);
+    if (
+      !gv?.availableForSale ||
+      gv.product?.status !== "ACTIVE" ||
+      price <= 0
+    ) {
+      return corsJson({ error: "One or more gift products are not available." }, { status: 422 });
+    }
+    totalGiftValue += price;
   }
 
-  const qualifyingPrices = (variantData.data?.nodes || [])
-    .filter(Boolean)
+  if (totalGiftValue > tier.giftAmount) {
+    return corsJson({ error: "Total gift value exceeds the tier budget." }, { status: 422 });
+  }
+
+  // Validate qualifying variants
+  const qualifyingPrices = qualifyingNodes
     .map((item: any) => Math.round(Number(item.price || 0) * 100))
-    .filter((itemPrice: number) => itemPrice > 0);
+    .filter((p: number) => p > 0);
 
   if (qualifyingPrices.length === 0) {
     return corsJson({ error: "Qualifying cart products are unavailable." }, { status: 422 });
@@ -143,12 +167,12 @@ async function handleGiftCode(shopDomain: string, body: any) {
           customerGets: {
             value: {
               discountOnQuantity: {
-                quantity: "1",
+                quantity: String(giftVariantIds.length),
                 effect: { percentage: 1 },
               },
             },
             items: {
-              products: { productVariantsToAdd: [variantGid] },
+              products: { productVariantsToAdd: giftVariantGids },
             },
           },
           combinesWith: {
