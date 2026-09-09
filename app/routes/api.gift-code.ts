@@ -21,12 +21,15 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 /**
- * Create a single BXGY discount code covering ALL gift variants.
+ * Create a discount code giving 100% off on ALL gift variants.
+ *
+ * Uses discountCodeBasicCreate (percentage off products) instead of BXGY.
+ * This ensures each gift variant gets 100% off individually.
  *
  * Body:
  *   - giftVariantIds: string[]  — all gift variant IDs (existing + new)
  *   - tierId: number
- *   - qualifyingVariantIds: string[] — non-gift cart variant IDs
+ *   - qualifyingVariantIds: string[] — non-gift cart variant IDs (for minimum requirement)
  *   - shop: string
  */
 async function handleGiftCode(shopDomain: string, body: any) {
@@ -95,10 +98,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
   }
 
   const nodes = (variantData.data?.nodes || []).filter(Boolean);
-
-  // First giftVariantIds.length nodes are gift variants
   const giftNodes = nodes.slice(0, giftVariantGids.length);
-  const qualifyingNodes = nodes.slice(giftVariantGids.length);
 
   // Validate gift variants: active, available, priced, within budget
   let totalGiftValue = 0;
@@ -118,26 +118,18 @@ async function handleGiftCode(shopDomain: string, body: any) {
     return corsJson({ error: "Total gift value exceeds the tier budget." }, { status: 422 });
   }
 
-  // Validate qualifying variants
-  const qualifyingPrices = qualifyingNodes
-    .map((item: any) => Math.round(Number(item.price || 0) * 100))
-    .filter((p: number) => p > 0);
-
-  if (qualifyingPrices.length === 0) {
-    return corsJson({ error: "Qualifying cart products are unavailable." }, { status: 422 });
-  }
-
-  const minimumPurchase = Math.max(tier.minAmount, Math.min(...qualifyingPrices));
   const code = `GIFT-${randomBytes(12).toString("hex").toUpperCase()}`;
   const now = new Date();
   const endsAt = new Date(now.getTime() + 30 * 60 * 1000);
 
+  // Use discountCodeBasicCreate: 100% off on specific gift variants.
+  // This discounts EACH variant individually, unlike BXGY which picks N items.
   let discountData: any;
   try {
     discountData = await adminGraphql(
       `#graphql
-        mutation CreateGiftCode($bxgyCodeDiscount: DiscountCodeBxgyInput!) {
-          discountCodeBxgyCreate(bxgyCodeDiscount: $bxgyCodeDiscount) {
+        mutation CreateGiftCode($basicCodeDiscount: DiscountCodeBasicInput!) {
+          discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
             codeDiscountNode {
               id
             }
@@ -150,38 +142,34 @@ async function handleGiftCode(shopDomain: string, body: any) {
         }
       `,
       {
-        bxgyCodeDiscount: {
+        basicCodeDiscount: {
           title: `Gift ${code}`,
           code,
           startsAt: now.toISOString(),
           endsAt: endsAt.toISOString(),
-          context: { all: "ALL" },
-          customerBuys: {
-            value: { amount: (minimumPurchase / 100).toFixed(2) },
-            items: {
-              products: { productVariantsToAdd: qualifyingVariantGids },
-            },
-            isOneTimePurchase: true,
-            isSubscription: false,
+          customerSelection: { all: "ALL" },
+          // 100% off on the gift variants
+          value: {
+            percentage: 100,
           },
-          customerGets: {
-            value: {
-              discountOnQuantity: {
-                quantity: String(giftVariantIds.length),
-                effect: { percentage: 1 },
-              },
-            },
-            items: {
-              products: { productVariantsToAdd: giftVariantGids },
+          appliesTo: {
+            products: {
+              productVariantsToAdd: giftVariantGids,
             },
           },
+          // Minimum purchase requirement: must have qualifying items in cart
+          minimumRequirements: {
+            subtotal: {
+              greaterThanOrEqualToSubtotal: (tier.minAmount / 100).toFixed(2),
+            },
+          },
+          usageLimit: 1,
+          appliesOncePerCustomer: false,
           combinesWith: {
             orderDiscounts: true,
             productDiscounts: true,
             shippingDiscounts: true,
           },
-          usageLimit: 1,
-          appliesOncePerCustomer: false,
         },
       },
     );
@@ -193,9 +181,9 @@ async function handleGiftCode(shopDomain: string, body: any) {
     );
   }
 
-  const errors = discountData.data?.discountCodeBxgyCreate?.userErrors || [];
+  const errors = discountData.data?.discountCodeBasicCreate?.userErrors || [];
 
-  if (errors.length > 0 || !discountData.data?.discountCodeBxgyCreate?.codeDiscountNode) {
+  if (errors.length > 0 || !discountData.data?.discountCodeBasicCreate?.codeDiscountNode) {
     console.error("[gift-code] Creation failed:", errors, discountData.errors || []);
     return corsJson({ error: errors[0]?.message || "Unable to create gift discount." }, { status: 422 });
   }
