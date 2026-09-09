@@ -1,10 +1,10 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { authenticate } from "~/shopify.server";
+import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
 
 /**
  * Fetch eligible gift products for a given max price.
- * Uses native Shopify app proxy authentication.
+ * Uses the static Admin API access token — no sessions needed.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   const preflight = handleCorsPreflight(request);
@@ -17,10 +17,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return corsJson({ products: [] });
   }
 
-  const { admin } = await authenticate.public.appProxy(request);
-
-  if (!admin) {
-    console.error("[api.products] No admin client from app proxy");
+  const config = getAdminConfig();
+  if (!config) {
+    console.error("[api.products] SHOPIFY_ADMIN_ACCESS_TOKEN not configured");
     return corsJson({ products: [] });
   }
 
@@ -49,8 +48,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   `;
 
   try {
-    const res = await admin.graphql(query, { variables: { first: 50 } });
-    const data: any = await res.json();
+    const data: any = await adminGraphql(query, { first: 50 });
 
     if (data.errors) {
       console.error("[api.products] GraphQL errors:", JSON.stringify(data.errors));

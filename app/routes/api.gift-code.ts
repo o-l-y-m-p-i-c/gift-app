@@ -2,39 +2,25 @@ import { randomBytes } from "node:crypto";
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { authenticate } from "~/shopify.server";
+import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
-  // Native Shopify app proxy authentication.
-  // Shopify signs every app-proxy request with HMAC.
-  let admin: any = null;
-  let shopDomain: string = "";
-
-  try {
-    const result = await authenticate.public.appProxy(request);
-    if (result?.admin && result?.session) {
-      admin = result.admin;
-      shopDomain = result.session.shop;
-    }
-  } catch (e) {
-    console.error("[gift-code] appProxy auth failed:", e);
-  }
-
-  if (!admin) {
+  const config = getAdminConfig();
+  if (!config) {
     return corsJson(
-      { error: "App session is unavailable. Please reinstall the app in Shopify admin." },
-      { status: 401 },
+      { error: "Server is not configured. Set SHOPIFY_ADMIN_ACCESS_TOKEN and SHOPIFY_SHOP_DOMAIN." },
+      { status: 500 },
     );
   }
 
   const body = await request.json().catch(() => null);
-  return handleGiftCode(admin, shopDomain, body);
+  return handleGiftCode(config.shopDomain, body);
 }
 
-async function handleGiftCode(admin: any, shopDomain: string, body: any) {
+async function handleGiftCode(shopDomain: string, body: any) {
   const variantId = String(body?.variantId || "");
   const tierId = Number(body?.tierId);
   const qualifyingVariantIds: string[] = Array.isArray(body?.qualifyingVariantIds)
@@ -67,7 +53,7 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
 
   let variantData: any;
   try {
-    const variantResponse = await admin.graphql(
+    variantData = await adminGraphql(
       `#graphql
         query GiftVariants($giftId: ID!, $qualifyingIds: [ID!]!) {
           productVariant(id: $giftId) {
@@ -86,13 +72,12 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
           }
         }
       `,
-      { variables: { giftId: variantGid, qualifyingIds: qualifyingVariantGids } },
+      { giftId: variantGid, qualifyingIds: qualifyingVariantGids },
     );
-    variantData = await variantResponse.json();
   } catch (e: any) {
     console.error("[gift-code] Admin API variant query failed:", e?.message || e);
     return corsJson(
-      { error: "Shop connection error. Please reinstall the app in Shopify admin." },
+      { error: "Shop connection error. Check SHOPIFY_ADMIN_ACCESS_TOKEN." },
       { status: 502 },
     );
   }
@@ -125,7 +110,7 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
 
   let discountData: any;
   try {
-    const discountResponse = await admin.graphql(
+    discountData = await adminGraphql(
       `#graphql
         mutation CreateGiftCode($bxgyCodeDiscount: DiscountCodeBxgyInput!) {
           discountCodeBxgyCreate(bxgyCodeDiscount: $bxgyCodeDiscount) {
@@ -141,48 +126,45 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
         }
       `,
       {
-        variables: {
-          bxgyCodeDiscount: {
-            title: `Gift ${code}`,
-            code,
-            startsAt: now.toISOString(),
-            endsAt: endsAt.toISOString(),
-            context: { all: "ALL" },
-            customerBuys: {
-              value: { amount: (minimumPurchase / 100).toFixed(2) },
-              items: {
-                products: { productVariantsToAdd: qualifyingVariantGids },
-              },
-              isOneTimePurchase: true,
-              isSubscription: false,
+        bxgyCodeDiscount: {
+          title: `Gift ${code}`,
+          code,
+          startsAt: now.toISOString(),
+          endsAt: endsAt.toISOString(),
+          context: { all: "ALL" },
+          customerBuys: {
+            value: { amount: (minimumPurchase / 100).toFixed(2) },
+            items: {
+              products: { productVariantsToAdd: qualifyingVariantGids },
             },
-            customerGets: {
-              value: {
-                discountOnQuantity: {
-                  quantity: "1",
-                  effect: { percentage: 1 },
-                },
-              },
-              items: {
-                products: { productVariantsToAdd: [variantGid] },
-              },
-            },
-            combinesWith: {
-              orderDiscounts: true,
-              productDiscounts: true,
-              shippingDiscounts: true,
-            },
-            usageLimit: 1,
-            appliesOncePerCustomer: false,
+            isOneTimePurchase: true,
+            isSubscription: false,
           },
+          customerGets: {
+            value: {
+              discountOnQuantity: {
+                quantity: "1",
+                effect: { percentage: 1 },
+              },
+            },
+            items: {
+              products: { productVariantsToAdd: [variantGid] },
+            },
+          },
+          combinesWith: {
+            orderDiscounts: true,
+            productDiscounts: true,
+            shippingDiscounts: true,
+          },
+          usageLimit: 1,
+          appliesOncePerCustomer: false,
         },
       },
     );
-    discountData = await discountResponse.json();
   } catch (e: any) {
     console.error("[gift-code] Discount creation failed:", e?.message || e);
     return corsJson(
-      { error: "Shop connection error. Please reinstall the app in Shopify admin." },
+      { error: "Shop connection error. Check SHOPIFY_ADMIN_ACCESS_TOKEN." },
       { status: 502 },
     );
   }
