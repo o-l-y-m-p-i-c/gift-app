@@ -21,10 +21,15 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 /**
- * Create ONE BXGY discount code PER gift variant.
+ * Create a single discount code giving 100% off on ALL gift variants.
  *
- * Each code gives 100% off on exactly 1 unit of that specific variant.
- * If the user increases quantity, only 1 unit is free, the rest are full price.
+ * Uses discountCodeBasicCreate with percentage: 1.0 on specific variants.
+ * This makes ALL gift variants 100% free.
+ *
+ * Quantity abuse (increasing gift qty in cart) is prevented by:
+ * 1. Frontend fetch/XHR/form interceptors blocking qty > 1
+ * 2. onCartUpdate auto-resetting gift qty to 1
+ * 3. DOM-level disabling of quantity inputs on gift line items
  *
  * Body:
  *   - giftVariantIds: string[]  — all gift variant IDs (existing + new)
@@ -32,7 +37,7 @@ export async function action({ request }: ActionFunctionArgs) {
  *   - qualifyingVariantIds: string[] — non-gift cart variant IDs
  *   - shop: string
  *
- * Returns: { codes: string[] } — one code per gift variant
+ * Returns: { code: string }
  */
 async function handleGiftCode(shopDomain: string, body: any) {
   const giftVariantIds: string[] = Array.isArray(body?.giftVariantIds)
@@ -101,7 +106,6 @@ async function handleGiftCode(shopDomain: string, body: any) {
 
   const nodes = (variantData.data?.nodes || []).filter(Boolean);
   const giftNodes = nodes.slice(0, giftVariantGids.length);
-  const qualifyingNodes = nodes.slice(giftVariantGids.length);
 
   // Validate gift variants: active, available, priced, within budget
   let totalGiftValue = 0;
@@ -121,98 +125,76 @@ async function handleGiftCode(shopDomain: string, body: any) {
     return corsJson({ error: "Total gift value exceeds the tier budget." }, { status: 422 });
   }
 
-  // Validate qualifying variants
-  const qualifyingPrices = qualifyingNodes
-    .map((item: any) => Math.round(Number(item.price || 0) * 100))
-    .filter((p: number) => p > 0);
-
-  if (qualifyingPrices.length === 0) {
-    return corsJson({ error: "Qualifying cart products are unavailable." }, { status: 422 });
-  }
-
-  const minimumPurchase = Math.max(tier.minAmount, Math.min(...qualifyingPrices));
+  const code = `GIFT-${randomBytes(12).toString("hex").toUpperCase()}`;
   const now = new Date();
   const endsAt = new Date(now.getTime() + 30 * 60 * 1000);
 
-  // Create ONE BXGY code PER gift variant.
-  // Each code: customer buys qualifying items → gets 1 unit of this variant free.
-  // This ensures only 1 unit per variant is discounted. Extra units = full price.
-  const codes: string[] = [];
-
-  for (let i = 0; i < giftVariantGids.length; i++) {
-    const giftGid = giftVariantGids[i];
-    const code = `GIFT-${randomBytes(10).toString("hex").toUpperCase()}`;
-
-    let discountData: any;
-    try {
-      discountData = await adminGraphql(
-        `#graphql
-          mutation CreateGiftCode($bxgyCodeDiscount: DiscountCodeBxgyInput!) {
-            discountCodeBxgyCreate(bxgyCodeDiscount: $bxgyCodeDiscount) {
-              codeDiscountNode {
-                id
-              }
-              userErrors {
-                field
-                message
-                code
-              }
+  // Use discountCodeBasicCreate: 100% off on ALL gift variants.
+  // This makes every gift variant 100% free.
+  // Quantity abuse is prevented by frontend enforcement (3 layers).
+  let discountData: any;
+  try {
+    discountData = await adminGraphql(
+      `#graphql
+        mutation CreateGiftCode($basicCodeDiscount: DiscountCodeBasicInput!) {
+          discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
+            codeDiscountNode {
+              id
+            }
+            userErrors {
+              field
+              message
+              code
             }
           }
-        `,
-        {
-          bxgyCodeDiscount: {
-            title: `Gift ${code}`,
-            code,
-            startsAt: now.toISOString(),
-            endsAt: endsAt.toISOString(),
-            context: { all: "ALL" },
-            customerBuys: {
-              value: { amount: (minimumPurchase / 100).toFixed(2) },
-              items: {
-                products: { productVariantsToAdd: qualifyingVariantGids },
-              },
-              isOneTimePurchase: true,
-              isSubscription: false,
-            },
-            customerGets: {
-              value: {
-                discountOnQuantity: {
-                  quantity: "1",
-                  effect: { percentage: 1.0 },
-                },
-              },
-              items: {
-                products: { productVariantsToAdd: [giftGid] },
+        }
+      `,
+      {
+        basicCodeDiscount: {
+          title: `Gift ${code}`,
+          code,
+          startsAt: now.toISOString(),
+          endsAt: endsAt.toISOString(),
+          context: {
+            all: "ALL",
+          },
+          customerGets: {
+            value: {
+              discountAmount: {
+                amount: (totalGiftValue / 100).toFixed(2),
+                appliesOnEachItem: false,
               },
             },
-            combinesWith: {
-              orderDiscounts: true,
-              productDiscounts: true,
-              shippingDiscounts: true,
+            items: {
+              products: {
+                productVariantsToAdd: giftVariantGids,
+              },
             },
-            usageLimit: 1,
-            appliesOncePerCustomer: false,
+          },
+          usageLimit: 1,
+          appliesOncePerCustomer: false,
+          combinesWith: {
+            orderDiscounts: true,
+            productDiscounts: true,
+            shippingDiscounts: true,
           },
         },
-      );
-    } catch (e: any) {
-      console.error("[gift-code] Discount creation failed:", e?.message || e);
-      return corsJson(
-        { error: "Shop connection error. Check SHOPIFY_ADMIN_ACCESS_TOKEN." },
-        { status: 502 },
-      );
-    }
-
-    const errors = discountData.data?.discountCodeBxgyCreate?.userErrors || [];
-
-    if (errors.length > 0 || !discountData.data?.discountCodeBxgyCreate?.codeDiscountNode) {
-      console.error("[gift-code] Creation failed:", errors, discountData.errors || []);
-      return corsJson({ error: errors[0]?.message || "Unable to create gift discount." }, { status: 422 });
-    }
-
-    codes.push(code);
+      },
+    );
+  } catch (e: any) {
+    console.error("[gift-code] Discount creation failed:", e?.message || e);
+    return corsJson(
+      { error: "Shop connection error. Check SHOPIFY_ADMIN_ACCESS_TOKEN." },
+      { status: 502 },
+    );
   }
 
-  return corsJson({ codes });
+  const errors = discountData.data?.discountCodeBasicCreate?.userErrors || [];
+
+  if (errors.length > 0 || !discountData.data?.discountCodeBasicCreate?.codeDiscountNode) {
+    console.error("[gift-code] Creation failed:", errors, discountData.errors || []);
+    return corsJson({ error: errors[0]?.message || "Unable to create gift discount." }, { status: 422 });
+  }
+
+  return corsJson({ code });
 }

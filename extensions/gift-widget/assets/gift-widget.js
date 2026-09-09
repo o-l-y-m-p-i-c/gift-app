@@ -641,7 +641,7 @@
         }),
       });
       const codeData = await codeResponse.json().catch(() => ({}));
-      if (!codeResponse.ok || !codeData.codes || codeData.codes.length === 0) {
+      if (!codeResponse.ok || !codeData.code) {
         throw new Error(codeData.error || "Unable to create gift discount.");
       }
 
@@ -663,14 +663,13 @@
       }
       giftAdded = true;
 
-      // 3. Apply ALL discount codes — replace old GIFT-* codes with the new ones
+      // 3. Apply discount code — replace old GIFT-* codes with the new one
       const cart = await fetchCart();
       const nonGiftCodes = (cart.discount_codes || [])
         .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
         .map((d) => d.code);
-      const allCodes = [...nonGiftCodes, ...codeData.codes];
-      const discountStr = allCodes.join(",");
-      console.log("[Gift Widget] Applying discount codes:", discountStr);
+      const discountStr = [...nonGiftCodes, codeData.code].join(",");
+      console.log("[Gift Widget] Applying discount:", discountStr);
       const updateResponse = await fetch("/cart/update.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -768,8 +767,8 @@
         });
         const codeData = await codeResponse.json().catch(() => ({}));
 
-        if (codeResponse.ok && codeData.codes && codeData.codes.length > 0) {
-          // Replace old GIFT-* codes with the new ones
+        if (codeResponse.ok && codeData.code) {
+          // Replace old GIFT-* codes with the new one
           const nonGiftCodes = (updatedCart.discount_codes || [])
             .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
             .map((d) => d.code);
@@ -777,7 +776,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              discount: [...nonGiftCodes, ...codeData.codes].join(","),
+              discount: [...nonGiftCodes, codeData.code].join(","),
             }),
           });
         }
