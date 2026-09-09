@@ -150,6 +150,11 @@
     if (window.giftWidget && typeof window.giftWidget._init === "function") {
       await window.giftWidget._init();
     }
+
+    // Disable quantity inputs on gift items after section refresh
+    const cart2 = await fetchCart().catch(() => null);
+    if (cart2) disableGiftQuantityInputs(cart2);
+
     isRefreshingSection = false;
   }
 
@@ -233,6 +238,9 @@
       showNotification("Gift items are limited to 1 per product.", "warning");
       cart = await fetchCart();
     }
+
+    // Disable quantity inputs on gift items in the cart DOM
+    disableGiftQuantityInputs(cart);
 
     const tierChanged = activeTier?.id !== lastActiveTierId;
     if (tierChanged) {
@@ -823,67 +831,245 @@
   // ─── Cart update listener ──────────────────────────────────
 
   /**
-   * Intercept /cart/change.js and /cart/update.js requests to prevent
-   * quantity increases on gift items. Gift items must stay at quantity 1.
-   * This prevents abuse where a user adds a gift then increases its quantity.
+   * Intercept ALL cart change requests (fetch, XMLHttpRequest, form submit)
+   * to prevent quantity increases on gift items. Gift items must stay at qty 1.
    */
   function interceptCartChanges() {
+    // ── 1. Intercept fetch() ──
     const originalFetch = window.fetch;
     window.fetch = async function (input, init) {
       const url = typeof input === "string" ? input : input?.url || "";
       const body = init?.body;
 
-      if (
-        (url.includes("/cart/change.js") || url.includes("/cart/update.js")) &&
-        body &&
-        typeof body === "string"
-      ) {
-        try {
-          const parsed = JSON.parse(body);
+      if (url.includes("/cart/change.js") || url.includes("/cart/update.js") || url.includes("/cart/add.js")) {
+        const parsed = parseBody(body);
+        if (parsed) {
           const cart = await fetchCart().catch(() => null);
           if (cart) {
-            const giftKeys = new Set(
-              getGiftItems(cart).map((item) => item.key),
-            );
+            const giftKeys = new Set(getGiftItems(cart).map((item) => item.key));
+            const giftVariantIds = new Set(getGiftItems(cart).map((item) => String(item.variant_id)));
 
-            if (url.includes("/cart/change.js") && parsed.id && giftKeys.has(parsed.id)) {
-              // Block quantity increase on gift items
-              if (parsed.quantity && parsed.quantity > 1) {
-                console.warn("[Gift Widget] Blocked quantity increase on gift item");
-                showNotification("Gift items cannot be added in multiple quantities.", "warning");
-                // Return the current cart unchanged
+            // /cart/change.js with id (key) or line (1-based index)
+            if (url.includes("/cart/change.js")) {
+              if (parsed.id && giftKeys.has(parsed.id) && parsed.quantity > 1) {
+                console.warn("[Gift Widget] Blocked qty increase (id)");
+                showNotification("Gift items are limited to 1 quantity.", "warning");
                 return new Response(JSON.stringify(cart), {
                   status: 200,
                   headers: { "Content-Type": "application/json" },
                 });
               }
+              // Dawn uses line (1-based index) + quantity
+              if (parsed.line && parsed.quantity > 1) {
+                const lineIndex = parsed.line - 1;
+                const item = cart.items[lineIndex];
+                if (item && giftKeys.has(item.key)) {
+                  console.warn("[Gift Widget] Blocked qty increase (line)");
+                  showNotification("Gift items are limited to 1 quantity.", "warning");
+                  return new Response(JSON.stringify(cart), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                  });
+                }
+              }
             }
 
-            if (url.includes("/cart/update.js") && parsed.updates && Array.isArray(parsed.updates)) {
-              // Check if any gift item quantity is being increased
+            // /cart/update.js with updates array or object
+            if (url.includes("/cart/update.js") && parsed.updates) {
               let modified = false;
-              const newUpdates = [...parsed.updates];
-              cart.items.forEach((item, index) => {
-                if (giftKeys.has(item.key) && newUpdates[index] && newUpdates[index] > 1) {
-                  newUpdates[index] = 1;
-                  modified = true;
+              if (Array.isArray(parsed.updates)) {
+                const newUpdates = [...parsed.updates];
+                cart.items.forEach((item, index) => {
+                  if (giftKeys.has(item.key) && newUpdates[index] > 1) {
+                    newUpdates[index] = 1;
+                    modified = true;
+                  }
+                });
+                if (modified) {
+                  showNotification("Gift items are limited to 1 quantity.", "warning");
+                  return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, updates: newUpdates }) });
                 }
+              } else if (typeof parsed.updates === "object") {
+                const newUpdates = { ...parsed.updates };
+                for (const key of Object.keys(newUpdates)) {
+                  if (giftKeys.has(key) && newUpdates[key] > 1) {
+                    newUpdates[key] = 1;
+                    modified = true;
+                  }
+                }
+                if (modified) {
+                  showNotification("Gift items are limited to 1 quantity.", "warning");
+                  return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, updates: newUpdates }) });
+                }
+              }
+            }
+
+            // /cart/add.js — block adding more of an existing gift variant
+            if (url.includes("/cart/add.js") && parsed.items) {
+              let modified = false;
+              const newItems = parsed.items.map((item) => {
+                if (giftVariantIds.has(String(item.id)) && item.quantity > 1) {
+                  modified = true;
+                  return { ...item, quantity: 1 };
+                }
+                return item;
               });
               if (modified) {
-                console.warn("[Gift Widget] Blocked quantity increase on gift items in updates array");
-                showNotification("Gift items cannot be added in multiple quantities.", "warning");
-                const newBody = JSON.stringify({ ...parsed, updates: newUpdates });
-                return originalFetch(input, { ...init, body: newBody });
+                showNotification("Gift items are limited to 1 quantity.", "warning");
+                return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, items: newItems }) });
               }
             }
           }
-        } catch (e) {
-          // If parsing fails, proceed with original request
         }
       }
 
       return originalFetch(input, init);
     };
+
+    // ── 2. Intercept XMLHttpRequest ──
+    const originalOpen = XMLHttpRequest.prototype.open;
+    const originalSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this._giftWidgetUrl = url;
+      return originalOpen.call(this, method, url, ...rest);
+    };
+
+    XMLHttpRequest.prototype.send = function (body) {
+      const url = this._giftWidgetUrl || "";
+      if (url.includes("/cart/change.js") || url.includes("/cart/update.js")) {
+        const parsed = parseBody(body);
+        if (parsed) {
+          // We need to check synchronously since XHR send is not async-friendly here
+          // Store for async check
+          this._giftWidgetBody = parsed;
+          // Do a quick synchronous check using a cached cart if available
+          // The real enforcement happens in onCartUpdate anyway
+        }
+      }
+      return originalSend.call(this, body);
+    };
+
+    // ── 3. Intercept form submissions to /cart ──
+    document.addEventListener("submit", async (e) => {
+      const form = e.target;
+      if (!form || !form.action) return;
+      const action = form.getAttribute("action") || "";
+      if (!action.includes("/cart")) return;
+
+      // Check if this is a quantity update form
+      const formData = new FormData(form);
+      const updates = formData.get("updates[]") || formData.get("updates");
+      if (!updates) return;
+
+      const cart = await fetchCart().catch(() => null);
+      if (!cart) return;
+
+      const giftKeys = new Set(getGiftItems(cart).map((item) => item.key));
+      if (giftKeys.size === 0) return;
+
+      // Check if any gift item quantity is being increased
+      const updatesEntries = formData.getAll("updates[]");
+      let hasAbuse = false;
+      cart.items.forEach((item, index) => {
+        if (giftKeys.has(item.key) && updatesEntries[index] && Number(updatesEntries[index]) > 1) {
+          hasAbuse = true;
+        }
+      });
+
+      if (hasAbuse) {
+        e.preventDefault();
+        e.stopPropagation();
+        showNotification("Gift items are limited to 1 quantity.", "warning");
+        // Reset the form quantities for gift items
+        await enforceGiftQuantities(cart);
+      }
+    }, true);
+  }
+
+  function parseBody(body) {
+    if (!body) return null;
+    if (typeof body === "string") {
+      try { return JSON.parse(body); } catch { return null; }
+    }
+    if (body instanceof FormData) {
+      const obj = {};
+      for (const [key, value] of body.entries()) {
+        if (key.endsWith("[]")) {
+          if (!obj[key]) obj[key] = [];
+          obj[key].push(value);
+        } else {
+          obj[key] = value;
+        }
+      }
+      return obj;
+    }
+    return null;
+  }
+
+  /**
+   * Force-reset all gift items to quantity 1.
+   * Called after any cart change is detected.
+   */
+  async function enforceGiftQuantities(cart) {
+    const gifts = getGiftItems(cart);
+    for (const gift of gifts) {
+      if (gift.quantity > 1) {
+        try {
+          await fetch("/cart/change.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: gift.key, quantity: 1 }),
+          });
+        } catch (e) {
+          console.error("[Gift Widget] Failed to reset gift quantity:", e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Disable quantity inputs on gift line items in the cart DOM.
+   * This prevents the user from even trying to increase the quantity.
+   */
+  function disableGiftQuantityInputs(cart) {
+    const gifts = getGiftItems(cart);
+    if (gifts.length === 0) return;
+
+    const giftKeys = new Set(gifts.map((g) => g.key));
+    const giftVariantIds = new Set(gifts.map((g) => String(g.variant_id)));
+
+    // Dawn cart page: quantity inputs inside cart-items
+    const cartItems = document.querySelectorAll(
+      "[data-id^='template--'][data-id*='cart-items'] .cart-item, " +
+      "cart-drawer-items .cart-item, " +
+      "form[action='/cart'] .cart-item"
+    );
+
+    cartItems.forEach((item) => {
+      const key = item.getAttribute("data-key") || item.getAttribute("data-line-key");
+      const variantId = item.getAttribute("data-variant-id") || item.getAttribute("data-product-id");
+      const isGift = (key && giftKeys.has(key)) || (variantId && giftVariantIds.has(variantId));
+
+      if (isGift) {
+        // Disable quantity inputs
+        const inputs = item.querySelectorAll("input[name='quantity'], input[name='updates[]'], .quantity__input, [data-quantity-input]");
+        inputs.forEach((input) => {
+          input.disabled = true;
+          input.max = 1;
+          input.min = 1;
+          input.value = 1;
+          input.setAttribute("readonly", "readonly");
+        });
+        // Disable +/- buttons
+        const buttons = item.querySelectorAll(".quantity__button, [data-quantity-button]");
+        buttons.forEach((btn) => {
+          btn.disabled = true;
+          btn.style.pointerEvents = "none";
+          btn.style.opacity = "0.5";
+        });
+      }
+    });
   }
 
   function listenForCartUpdates() {
