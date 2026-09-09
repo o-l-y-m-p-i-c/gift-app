@@ -111,9 +111,14 @@ async function handleGiftCode(shopDomain: string, body: any) {
     );
   }
 
-  const nodes = (variantData.data?.nodes || []).filter(Boolean);
-  const giftNodes = nodes.slice(0, giftVariantGids.length);
-  const qualifyingNodes = nodes.slice(giftVariantGids.length);
+  const nodes = variantData.data?.nodes || [];
+  const nodesById = new Map<string, any>(
+    nodes.filter(Boolean).map((node: any) => [node.id, node]),
+  );
+  const giftNodes = giftVariantGids.map((gid) => nodesById.get(gid));
+  const qualifyingNodes = qualifyingVariantGids
+    .map((gid) => nodesById.get(gid))
+    .filter(Boolean);
 
   // Map: variant GID → price (for counting duplicates)
   const giftPriceMap = new Map<string, number>();
@@ -230,5 +235,5 @@ async function handleGiftCode(shopDomain: string, body: any) {
     return corsJson({ error: errors[0]?.message || "Unable to create gift discount." }, { status: 422 });
   }
 
-  return corsJson({ code });
+  return corsJson({ code, giftQuantity, totalGiftValue });
 }

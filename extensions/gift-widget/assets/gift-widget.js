@@ -23,6 +23,7 @@
 
   const GIFT_PROPERTY_KEY = "_gift";
   const GIFT_PROPERTY_VALUE = "true";
+  const GIFT_SELECTION_PROPERTY_KEY = "_gift_selection";
 
   let tiers = [];
   let settings = {
@@ -151,10 +152,6 @@
       await window.giftWidget._init();
     }
 
-    // Disable quantity inputs on gift items after section refresh
-    const cart2 = await fetchCart().catch(() => null);
-    if (cart2) disableGiftQuantityInputs(cart2);
-
     isRefreshingSection = false;
   }
 
@@ -181,19 +178,68 @@
     );
   }
 
+  function getGiftSelections(cart) {
+    const selections = new Map();
+    for (const item of getGiftItems(cart)) {
+      const selectionId = item.properties?.[GIFT_SELECTION_PROPERTY_KEY] || item.key;
+      if (!selections.has(selectionId)) selections.set(selectionId, item);
+    }
+    return [...selections.values()];
+  }
+
+  function getPriceValue(value) {
+    const price = Number(value);
+    return Number.isFinite(price) ? price : null;
+  }
+
+  function getOriginalLinePrice(item) {
+    const originalLinePrice = getPriceValue(item.original_line_price);
+    if (originalLinePrice !== null) return originalLinePrice;
+    const originalPrice = getPriceValue(item.original_price);
+    if (originalPrice !== null) return originalPrice * item.quantity;
+    const price = getPriceValue(item.price);
+    if (price !== null) return price * item.quantity;
+    return getPriceValue(item.line_price) || 0;
+  }
+
+  function getOriginalUnitPrice(item) {
+    const originalPrice = getPriceValue(item.original_price);
+    if (originalPrice !== null) return originalPrice;
+    return Math.round(getOriginalLinePrice(item) / Math.max(1, item.quantity));
+  }
+
+  function getFinalLinePrice(item) {
+    const finalLinePrice = getPriceValue(item.final_line_price);
+    if (finalLinePrice !== null) return finalLinePrice;
+    const finalPrice = getPriceValue(item.final_price);
+    if (finalPrice !== null) return finalPrice * item.quantity;
+    return getPriceValue(item.line_price) || 0;
+  }
+
   function getTotalGiftValue(cart) {
-    // Use line_price (before discounts) not final_line_price (after discounts).
-    // After applying the discount code, final_line_price becomes 0, which would
-    // make the widget think no budget has been used.
-    return getGiftItems(cart).reduce((sum, item) => sum + item.line_price, 0);
+    return getGiftSelections(cart).reduce((sum, item) => sum + getOriginalUnitPrice(item), 0);
+  }
+
+  function getFreeGiftQuantity(cart) {
+    return getGiftItems(cart).reduce((sum, item) => {
+      const unitPrice = getOriginalUnitPrice(item);
+      if (unitPrice <= 0) return sum;
+      const discountValue = getOriginalLinePrice(item) - getFinalLinePrice(item);
+      return sum + Math.min(item.quantity, Math.floor(discountValue / unitPrice));
+    }, 0);
   }
 
   function getThresholdBase(cart) {
-    const giftTotal = getTotalGiftValue(cart);
-    const base = settings.useTotalAfterDiscounts
-      ? cart.total_price
-      : cart.items_subtotal_price;
-    return base - giftTotal;
+    return cart.items
+      .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
+      .reduce(
+        (sum, item) => sum + (
+          settings.useTotalAfterDiscounts
+            ? getFinalLinePrice(item)
+            : getOriginalLinePrice(item)
+        ),
+        0,
+      );
   }
 
   function findActiveTier(thresholdBase) {
@@ -221,11 +267,19 @@
     const activeTier = findActiveTier(thresholdBase);
     const nextTier = findNextTier(thresholdBase);
     const giftItems = getGiftItems(cart);
-    const totalGiftValue = giftItems.reduce((sum, item) => sum + item.line_price, 0);
-    const remainingBudget = activeTier ? activeTier.giftAmount - totalGiftValue : 0;
+    const giftSelectionCount = getGiftSelections(cart).length;
+    const freeGiftQuantity = getFreeGiftQuantity(cart);
+    const totalGiftValue = getTotalGiftValue(cart);
+    const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
 
-    // Disable quantity inputs on gift items in the cart DOM
-    disableGiftQuantityInputs(cart);
+    if (giftSelectionCount > 0 && freeGiftQuantity !== giftSelectionCount) {
+      await removeAllGifts(cart);
+      if (settings.showRemovalNotification) {
+        showNotification("Your gifts were removed because the full gift discount was not applied.", "warning");
+      }
+      await refreshCartSection();
+      return;
+    }
 
     const tierChanged = activeTier?.id !== lastActiveTierId;
     if (tierChanged) {
@@ -294,9 +348,9 @@
     const el = document.getElementById("gift-widget-container");
     if (!el) return;
 
-    const giftItems = getGiftItems(cart);
-    const totalGiftValue = giftItems.reduce((sum, item) => sum + item.line_price, 0);
-    const remainingBudget = activeTier ? activeTier.giftAmount - totalGiftValue : 0;
+    const giftItems = getGiftSelections(cart);
+    const totalGiftValue = getTotalGiftValue(cart);
+    const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
 
     // ── Progress bar section ──
     let progressHtml = "";
@@ -375,7 +429,7 @@
             <img src="${item.image || ""}" alt="${item.product_title}" class="gift-widget__selected-image" loading="lazy" />
             <div class="gift-widget__selected-info">
               <p class="gift-widget__selected-name">${item.product_title}</p>
-              <p class="gift-widget__selected-price">${formatPrice(item.line_price)}</p>
+              <p class="gift-widget__selected-price">${formatPrice(getOriginalUnitPrice(item))}</p>
             </div>
             <button type="button"
               class="gift-widget__selected-remove"
@@ -599,6 +653,7 @@
     if (clickedSpinner) clickedSpinner.style.display = "inline-block";
 
     let giftAdded = false;
+    let addedGiftSelectionId = null;
     const shopDomain =
       document.getElementById("gift-widget-container")?.dataset.shop || "";
 
@@ -608,13 +663,10 @@
         .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
         .map((item) => String(item.variant_id));
 
-      // Collect ALL gift variant IDs: existing gifts + the new one.
-      // Include duplicates for quantity > 1 (same variant added multiple times).
-      // The backend uses the count for discountOnQuantity.quantity and
-      // deduplicates for productVariantsToAdd.
-      const existingGiftVariantIds = initialCart.items
-        .filter((item) => item.properties?.[GIFT_PROPERTY_KEY])
-        .flatMap((item) => Array(Math.max(1, item.quantity)).fill(String(item.variant_id)));
+      // Collect one variant ID per gift-widget selection plus the new selection.
+      // Manual quantity increases remain paid and don't increase the BXGY benefit.
+      const existingGiftVariantIds = getGiftSelections(initialCart)
+        .map((item) => String(item.variant_id));
       const allGiftVariantIds = [...existingGiftVariantIds, variantId];
 
       // 1. Request a single discount code covering ALL gifts
@@ -632,8 +684,14 @@
       if (!codeResponse.ok || !codeData.code) {
         throw new Error(codeData.error || "Unable to create gift discount.");
       }
+      if (Number(codeData.giftQuantity) !== allGiftVariantIds.length) {
+        throw new Error("The gift discount quantity is out of sync. Please try again.");
+      }
 
       // 2. Add gift to cart
+      addedGiftSelectionId = typeof window.crypto?.randomUUID === "function"
+        ? window.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const addResponse = await fetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -641,13 +699,16 @@
           items: [{
             id: Number(variantId),
             quantity: 1,
-            properties: { [GIFT_PROPERTY_KEY]: GIFT_PROPERTY_VALUE },
+            properties: {
+              [GIFT_PROPERTY_KEY]: GIFT_PROPERTY_VALUE,
+              [GIFT_SELECTION_PROPERTY_KEY]: addedGiftSelectionId,
+            },
           }],
         }),
       });
+      const addData = await addResponse.json().catch(() => ({}));
       if (!addResponse.ok) {
-        const error = await addResponse.json().catch(() => ({}));
-        throw new Error(error.description || "Unable to add this gift.");
+        throw new Error(addData.description || "Unable to add this gift.");
       }
       giftAdded = true;
 
@@ -673,14 +734,34 @@
         throw new Error(updateData.description || "Unable to apply the gift discount.");
       }
 
+      const giftCode = (updateData.discount_codes || []).find((discount) => discount.code === codeData.code);
+      const updatedGiftQuantity = getGiftItems(updateData)
+        .reduce((sum, item) => sum + item.quantity, 0);
+      const freeGiftQuantity = getFreeGiftQuantity(updateData);
+      if (
+        !giftCode?.applicable ||
+        freeGiftQuantity !== allGiftVariantIds.length
+      ) {
+        console.error("[Gift Widget] Gift discount was only partially applied:", {
+          code: codeData.code,
+          expectedGiftQuantity: allGiftVariantIds.length,
+          updatedGiftQuantity,
+          freeGiftQuantity,
+          discountCodes: updateData.discount_codes,
+        });
+        throw new Error("The selected gift could not be made fully free.");
+      }
+
       // 4. Refresh cart section
       await refreshCartSection();
     } catch (e) {
       if (giftAdded) {
         const cart = await fetchCart().catch(() => null);
-        if (cart) {
-          await removeGiftByKey(variantId);
-          await refreshCartSection();
+        const addedGift = cart?.items.find(
+          (item) => item.properties?.[GIFT_SELECTION_PROPERTY_KEY] === addedGiftSelectionId,
+        );
+        if (addedGift) {
+          await removeGift(addedGift.key);
         }
       }
       console.error("[Gift Widget] Failed to add gift:", e);
@@ -734,10 +815,9 @@
       const remainingGifts = getGiftItems(updatedCart);
 
       if (remainingGifts.length > 0) {
-        // Recreate discount code for remaining gifts.
-        // Include duplicates for quantity > 1.
-        const remainingGiftVariantIds = remainingGifts
-          .flatMap((g) => Array(Math.max(1, g.quantity)).fill(String(g.variant_id)));
+        // Recreate the discount for the remaining gift-widget selections.
+        const remainingGiftVariantIds = getGiftSelections(updatedCart)
+          .map((item) => String(item.variant_id));
         const qualifyingVariantIds = updatedCart.items
           .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
           .map((item) => String(item.variant_id));
@@ -816,6 +896,16 @@
         console.error("[Gift Widget] Failed to remove gift:", e);
       }
     }
+
+    const updatedCart = await fetchCart();
+    const nonGiftCodes = (updatedCart.discount_codes || [])
+      .filter((discount) => discount.applicable !== false && discount.code && !discount.code.startsWith("GIFT-"))
+      .map((discount) => discount.code);
+    await fetch("/cart/update.js", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discount: nonGiftCodes.join(",") }),
+    });
   }
 
   // ─── Cart update listener ──────────────────────────────────
@@ -1020,7 +1110,6 @@
     if (gifts.length === 0) return;
 
     const giftKeys = new Set(gifts.map((g) => g.key));
-    const giftVariantIds = new Set(gifts.map((g) => String(g.variant_id)));
     const giftQtyByKey = new Map(gifts.map((g) => [g.key, g.quantity]));
 
     // Dawn cart page: quantity inputs inside cart-items
@@ -1031,11 +1120,15 @@
     );
 
     cartItems.forEach((item) => {
-      const key = item.getAttribute("data-key") || item.getAttribute("data-line-key");
-      const variantId = item.getAttribute("data-variant-id") || item.getAttribute("data-product-id");
-      const isGift = (key && giftKeys.has(key)) || (variantId && giftVariantIds.has(variantId));
+      const removeLink = item.querySelector('cart-remove-button a[href*="/cart/change"]');
+      let key = item.getAttribute("data-key") || item.getAttribute("data-line-key");
+      if (!key && removeLink) {
+        try {
+          key = new URL(removeLink.href, window.location.origin).searchParams.get("id");
+        } catch {}
+      }
 
-      if (isGift) {
+      if (key && giftKeys.has(key)) {
         const currentQty = (key && giftQtyByKey.get(key)) || 1;
         // Lock quantity inputs to current value — prevent increases
         const inputs = item.querySelectorAll("input[name='quantity'], input[name='updates[]'], .quantity__input, [data-quantity-input]");
@@ -1048,7 +1141,8 @@
         // Disable only the + button, keep - button for removal
         const buttons = item.querySelectorAll(".quantity__button, [data-quantity-button]");
         buttons.forEach((btn) => {
-          const isPlus = btn.classList.contains("quantity__button--plus") ||
+          const isPlus = btn.name === "plus" ||
+                         btn.classList.contains("quantity__button--plus") ||
                          btn.getAttribute("data-action") === "increment" ||
                          (btn.getAttribute("aria-label") || "").includes("Increase") ||
                          btn.querySelector(".icon-plus, [data-icon='plus']");
@@ -1156,7 +1250,6 @@
     _init: init,
   };
 
-  interceptCartChanges();
   listenForCartUpdates();
 
   if (document.readyState === "loading") {
