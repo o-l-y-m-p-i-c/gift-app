@@ -151,10 +151,15 @@ async function handleGiftCode(shopDomain: string, body: any) {
           context: {
             all: "ALL",
           },
-          // 100% off on the gift variants
+          // 100% off on the gift variants, but ONLY for the exact quantity
+          // of gifts selected. This prevents abuse where a user increases
+          // the quantity of gift items in the cart.
           customerGets: {
             value: {
-              percentage: 1.0,
+              discountOnQuantity: {
+                quantity: String(giftVariantIds.length),
+                effect: { percentage: 1.0 },
+              },
             },
             items: {
               products: {

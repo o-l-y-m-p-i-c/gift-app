@@ -804,6 +804,70 @@
 
   // ─── Cart update listener ──────────────────────────────────
 
+  /**
+   * Intercept /cart/change.js and /cart/update.js requests to prevent
+   * quantity increases on gift items. Gift items must stay at quantity 1.
+   * This prevents abuse where a user adds a gift then increases its quantity.
+   */
+  function interceptCartChanges() {
+    const originalFetch = window.fetch;
+    window.fetch = async function (input, init) {
+      const url = typeof input === "string" ? input : input?.url || "";
+      const body = init?.body;
+
+      if (
+        (url.includes("/cart/change.js") || url.includes("/cart/update.js")) &&
+        body &&
+        typeof body === "string"
+      ) {
+        try {
+          const parsed = JSON.parse(body);
+          const cart = await fetchCart().catch(() => null);
+          if (cart) {
+            const giftKeys = new Set(
+              getGiftItems(cart).map((item) => item.key),
+            );
+
+            if (url.includes("/cart/change.js") && parsed.id && giftKeys.has(parsed.id)) {
+              // Block quantity increase on gift items
+              if (parsed.quantity && parsed.quantity > 1) {
+                console.warn("[Gift Widget] Blocked quantity increase on gift item");
+                showNotification("Gift items cannot be added in multiple quantities.", "warning");
+                // Return the current cart unchanged
+                return new Response(JSON.stringify(cart), {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" },
+                });
+              }
+            }
+
+            if (url.includes("/cart/update.js") && parsed.updates && Array.isArray(parsed.updates)) {
+              // Check if any gift item quantity is being increased
+              let modified = false;
+              const newUpdates = [...parsed.updates];
+              cart.items.forEach((item, index) => {
+                if (giftKeys.has(item.key) && newUpdates[index] && newUpdates[index] > 1) {
+                  newUpdates[index] = 1;
+                  modified = true;
+                }
+              });
+              if (modified) {
+                console.warn("[Gift Widget] Blocked quantity increase on gift items in updates array");
+                showNotification("Gift items cannot be added in multiple quantities.", "warning");
+                const newBody = JSON.stringify({ ...parsed, updates: newUpdates });
+                return originalFetch(input, { ...init, body: newBody });
+              }
+            }
+          }
+        } catch (e) {
+          // If parsing fails, proceed with original request
+        }
+      }
+
+      return originalFetch(input, init);
+    };
+  }
+
   function listenForCartUpdates() {
     function scheduleCartRefresh() {
       if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
@@ -898,6 +962,7 @@
     _init: init,
   };
 
+  interceptCartChanges();
   listenForCartUpdates();
 
   if (document.readyState === "loading") {
