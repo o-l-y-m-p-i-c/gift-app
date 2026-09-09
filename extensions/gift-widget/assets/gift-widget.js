@@ -642,15 +642,21 @@
       const nonGiftCodes = (cart.discount_codes || [])
         .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
         .map((d) => d.code);
+      const discountStr = [...nonGiftCodes, codeData.code].join(",");
+      console.log("[Gift Widget] Applying discount:", discountStr);
       const updateResponse = await fetch("/cart/update.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          discount: [...nonGiftCodes, codeData.code].join(","),
+          discount: discountStr,
         }),
       });
+      const updateData = await updateResponse.json().catch(() => ({}));
+      console.log("[Gift Widget] Update response status:", updateResponse.status);
+      console.log("[Gift Widget] Cart discount_codes after update:", updateData.discount_codes);
       if (!updateResponse.ok) {
-        throw new Error("Unable to apply the gift discount.");
+        console.error("[Gift Widget] Cart update failed:", updateData);
+        throw new Error(updateData.description || "Unable to apply the gift discount.");
       }
 
       // 4. Refresh cart section
