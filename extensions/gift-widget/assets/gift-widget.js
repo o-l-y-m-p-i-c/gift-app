@@ -113,7 +113,14 @@
       const newSection = doc.getElementById(section.id);
 
       if (newSection) {
+        // Replace section content. Scripts in innerHTML don't execute,
+        // so we manually re-init the widget afterwards.
         section.innerHTML = newSection.innerHTML;
+
+        // Re-initialize the widget into the new container
+        if (window.giftWidget && typeof window.giftWidget._init === "function") {
+          await window.giftWidget._init();
+        }
       }
     } catch (e) {
       console.error("[Gift Widget] Failed to refresh cart section:", e);
@@ -508,6 +515,41 @@
         }
       });
     });
+
+    // MutationObserver: catches Dawn's section re-renders that don't
+    // dispatch cart events (e.g. quantity changes, item removals).
+    // Watch the cart section (parent of the widget), not the widget itself,
+    // because the widget container gets replaced during re-renders.
+    const cartSection = document.querySelector("[id^='shopify-section-']")
+      ?.querySelector("form[action='/cart']")
+      ?.closest("[id^='shopify-section-']");
+
+    if (cartSection && typeof MutationObserver !== "undefined") {
+      let observerDebounce = null;
+      const observer = new MutationObserver(() => {
+        // Debounce — Dawn may make several DOM changes in quick succession
+        if (observerDebounce) clearTimeout(observerDebounce);
+        observerDebounce = setTimeout(async () => {
+          observerDebounce = null;
+          // Check if the widget container still exists and has content.
+          // If it was replaced/emptied by Dawn, re-init the widget.
+          const el = document.getElementById("gift-widget-container");
+          if (!el || el.children.length === 0) {
+            if (window.giftWidget && typeof window.giftWidget._init === "function") {
+              await window.giftWidget._init();
+            }
+          } else {
+            // Container still has content — just refresh state from cart
+            const cart = await fetchCart();
+            await onCartUpdate(cart);
+          }
+        }, 300);
+      });
+      observer.observe(cartSection, {
+        childList: true,
+        subtree: true,
+      });
+    }
   }
 
   // ─── Utils ─────────────────────────────────────────────────
