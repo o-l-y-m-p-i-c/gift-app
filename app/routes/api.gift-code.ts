@@ -149,7 +149,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
           endsAt: endsAt.toISOString(),
           // context: all buyers are eligible
           context: {
-            all: true,
+            all: "ALL",
           },
           // 100% off on the gift variants
           customerGets: {
