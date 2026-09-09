@@ -95,31 +95,40 @@
    */
   /**
    * Refresh the cart UI after AJAX operations.
-   * Works with Dawn theme (cart page + cart drawer).
+   * Works with Dawn theme (cart page + cart drawer + header cart icon).
    *
-   * Dawn has two cart surfaces:
+   * Dawn has three cart surfaces:
    *   1. Cart page: form#cart inside section with data-id="template--...__cart-items"
    *   2. Cart drawer: <cart-drawer> with <cart-drawer-items> form#CartDrawer-Form
+   *   3. Header cart icon: #cart-icon-bubble with .cart-count-bubble
    *
    * Strategy:
    *   1. Dispatch 'cart:refresh' event — Dawn's own JS catches this and
    *      re-renders the cart sections itself (this is the native Dawn way).
    *   2. Also fetch and replace the cart page section manually as a fallback
    *      for when Dawn's JS doesn't handle it.
-   *   3. Re-execute scripts and re-init the widget after replacing HTML.
+   *   3. Refresh the cart drawer if it exists.
+   *   4. Update the header cart icon count bubble.
+   *   5. Re-execute scripts and re-init the widget after replacing HTML.
    */
   async function refreshCartSection() {
     isRefreshingSection = true;
 
+    // Fetch current cart once — used for events and count updates
+    const cart = await fetchCart().catch(() => null);
+
     try {
-      // Step 1: Dispatch Dawn's native cart refresh event.
-      // Dawn's cart.js and cart-drawer.js listen for this and re-render sections.
+      // Step 1: Dispatch Dawn's native cart refresh events.
+      // Dawn's cart.js and cart-drawer.js listen for these and re-render sections.
       document.dispatchEvent(new CustomEvent("cart:refresh", {
-        detail: { cart: await fetchCart().catch(() => null) },
+        detail: { cart },
       }));
-      console.log("[Gift Widget] Dispatched cart:refresh event");
+      document.dispatchEvent(new CustomEvent("cart:updated", {
+        detail: { cart },
+      }));
+      console.log("[Gift Widget] Dispatched cart:refresh and cart:updated events");
     } catch (e) {
-      console.warn("[Gift Widget] cart:refresh dispatch failed:", e);
+      console.warn("[Gift Widget] Event dispatch failed:", e);
     }
 
     // Step 2: Manually refresh the cart page section as fallback.
@@ -188,13 +197,41 @@
       }
     }
 
-    // Step 4: Re-initialize the gift widget into the (possibly new) container
+    // Step 4: Update the header cart icon count bubble
+    if (cart) {
+      updateCartCountBubble(cart);
+    }
+
+    // Step 5: Re-initialize the gift widget into the (possibly new) container
     if (window.giftWidget && typeof window.giftWidget._init === "function") {
       await window.giftWidget._init();
     }
 
     isRefreshingSection = false;
     console.log("[Gift Widget] Cart refresh complete");
+  }
+
+  /**
+   * Update the header cart icon count bubble (#cart-icon-bubble).
+   * Dawn shows item count in .cart-count-bubble inside #cart-icon-bubble.
+   */
+  function updateCartCountBubble(cart) {
+    const bubble = document.querySelector("#cart-icon-bubble .cart-count-bubble");
+    if (!bubble) return;
+
+    const itemCount = cart.item_count || 0;
+
+    if (itemCount > 0) {
+      bubble.style.display = "";
+      const countSpan = bubble.querySelector("span:not(.visually-hidden)");
+      const labelSpan = bubble.querySelector(".visually-hidden:last-child");
+      if (countSpan) countSpan.textContent = itemCount;
+      if (labelSpan) {
+        labelSpan.textContent = `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
+      }
+    } else {
+      bubble.style.display = "none";
+    }
   }
 
   function getThresholdBase(cart) {
