@@ -8,10 +8,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
-  // Use native Shopify app proxy authentication.
-  // Shopify signs every app-proxy request with HMAC — authenticate.public.appProxy
-  // validates the signature and gives us an admin client tied to the shop's
-  // offline session. No manual session lookup, no stored-token fallback.
+  // Native Shopify app proxy authentication.
+  // Shopify signs every app-proxy request with HMAC.
   let admin: any = null;
   let shopDomain: string = "";
 
@@ -27,7 +25,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (!admin) {
     return corsJson(
-      { error: "App session is unavailable. Please reopen the app in Shopify admin." },
+      { error: "App session is unavailable. Please reinstall the app in Shopify admin." },
       { status: 401 },
     );
   }
@@ -94,7 +92,7 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
   } catch (e: any) {
     console.error("[gift-code] Admin API variant query failed:", e?.message || e);
     return corsJson(
-      { error: "Shop connection error. Please reopen the app in Shopify admin to refresh the connection." },
+      { error: "Shop connection error. Please reinstall the app in Shopify admin." },
       { status: 502 },
     );
   }
@@ -184,7 +182,7 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
   } catch (e: any) {
     console.error("[gift-code] Discount creation failed:", e?.message || e);
     return corsJson(
-      { error: "Shop connection error. Please reopen the app in Shopify admin to refresh the connection." },
+      { error: "Shop connection error. Please reinstall the app in Shopify admin." },
       { status: 502 },
     );
   }
