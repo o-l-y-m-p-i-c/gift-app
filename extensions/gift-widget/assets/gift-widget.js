@@ -39,6 +39,7 @@
   let giftProducts = [];
   let cartRequest = null;
   let cartUpdateDebounce = null;
+  let isRefreshingSection = false; // prevents MutationObserver loop
 
   // ─── Init ──────────────────────────────────────────────────
 
@@ -92,39 +93,108 @@
    * After the section is replaced, the widget script runs again and
    * re-initializes via _init().
    */
+  /**
+   * Refresh the cart UI after AJAX operations.
+   * Works with Dawn theme (cart page + cart drawer).
+   *
+   * Dawn has two cart surfaces:
+   *   1. Cart page: form#cart inside section with data-id="template--...__cart-items"
+   *   2. Cart drawer: <cart-drawer> with <cart-drawer-items> form#CartDrawer-Form
+   *
+   * Strategy:
+   *   1. Dispatch 'cart:refresh' event — Dawn's own JS catches this and
+   *      re-renders the cart sections itself (this is the native Dawn way).
+   *   2. Also fetch and replace the cart page section manually as a fallback
+   *      for when Dawn's JS doesn't handle it.
+   *   3. Re-execute scripts and re-init the widget after replacing HTML.
+   */
   async function refreshCartSection() {
-    const cartForm = document.querySelector('form[action="/cart"]');
-    if (!cartForm) return;
-
-    const section = cartForm.closest("[id^='shopify-section-']");
-    if (!section) return;
-
-    const sectionId = section.id.replace("shopify-section-", "");
+    isRefreshingSection = true;
 
     try {
-      const res = await fetch(`${window.location.pathname}?section_id=${sectionId}`, {
-        headers: { Accept: "text/html" },
-      });
-      if (!res.ok) return;
-
-      const html = await res.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, "text/html");
-      const newSection = doc.getElementById(section.id);
-
-      if (newSection) {
-        // Replace section content. Scripts in innerHTML don't execute,
-        // so we manually re-init the widget afterwards.
-        section.innerHTML = newSection.innerHTML;
-
-        // Re-initialize the widget into the new container
-        if (window.giftWidget && typeof window.giftWidget._init === "function") {
-          await window.giftWidget._init();
-        }
-      }
+      // Step 1: Dispatch Dawn's native cart refresh event.
+      // Dawn's cart.js and cart-drawer.js listen for this and re-render sections.
+      document.dispatchEvent(new CustomEvent("cart:refresh", {
+        detail: { cart: await fetchCart().catch(() => null) },
+      }));
+      console.log("[Gift Widget] Dispatched cart:refresh event");
     } catch (e) {
-      console.error("[Gift Widget] Failed to refresh cart section:", e);
+      console.warn("[Gift Widget] cart:refresh dispatch failed:", e);
     }
+
+    // Step 2: Manually refresh the cart page section as fallback.
+    // Find the section ID from the cart items container.
+    const cartItemsDiv = document.querySelector("[data-id^='template--'][data-id*='cart-items']");
+    const sectionId = cartItemsDiv?.getAttribute("data-id");
+
+    if (sectionId) {
+      try {
+        console.log("[Gift Widget] Fetching cart section:", sectionId);
+        const res = await fetch(`${window.location.pathname}?section_id=${sectionId}`, {
+          headers: { Accept: "text/html" },
+        });
+
+        if (res.ok) {
+          const html = await res.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+
+          // Find the cart items container in the response
+          const newCartItems = doc.querySelector(`[data-id="${sectionId}"]`);
+          const oldCartItems = document.querySelector(`[data-id="${sectionId}"]`);
+
+          if (newCartItems && oldCartItems) {
+            // Replace the cart items content
+            oldCartItems.innerHTML = newCartItems.innerHTML;
+
+            // Re-execute scripts inside the replaced content
+            const scripts = oldCartItems.querySelectorAll("script");
+            scripts.forEach((oldScript) => {
+              const newScript = document.createElement("script");
+              for (const attr of oldScript.attributes || []) {
+                newScript.setAttribute(attr.name, attr.value);
+              }
+              newScript.textContent = oldScript.textContent;
+              oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+
+            console.log("[Gift Widget] Cart items section replaced");
+          }
+        }
+      } catch (e) {
+        console.warn("[Gift Widget] Section fetch failed:", e);
+      }
+    }
+
+    // Step 3: Also refresh the cart drawer if it exists
+    const cartDrawerItems = document.querySelector("cart-drawer-items");
+    if (cartDrawerItems) {
+      try {
+        const res = await fetch(`/cart?section_id=cart-drawer`, {
+          headers: { Accept: "text/html" },
+        });
+        if (res.ok) {
+          const html = await res.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+          const newDrawerItems = doc.querySelector("cart-drawer-items");
+          if (newDrawerItems && cartDrawerItems) {
+            cartDrawerItems.innerHTML = newDrawerItems.innerHTML;
+            console.log("[Gift Widget] Cart drawer section replaced");
+          }
+        }
+      } catch (e) {
+        console.warn("[Gift Widget] Cart drawer refresh failed:", e);
+      }
+    }
+
+    // Step 4: Re-initialize the gift widget into the (possibly new) container
+    if (window.giftWidget && typeof window.giftWidget._init === "function") {
+      await window.giftWidget._init();
+    }
+
+    isRefreshingSection = false;
+    console.log("[Gift Widget] Cart refresh complete");
   }
 
   function getThresholdBase(cart) {
@@ -518,15 +588,18 @@
 
     // MutationObserver: catches Dawn's section re-renders that don't
     // dispatch cart events (e.g. quantity changes, item removals).
-    // Watch the cart section (parent of the widget), not the widget itself,
-    // because the widget container gets replaced during re-renders.
-    const cartSection = document.querySelector("[id^='shopify-section-']")
-      ?.querySelector("form[action='/cart']")
-      ?.closest("[id^='shopify-section-']");
+    // Watch the cart items container and the cart drawer.
+    const cartItemsContainer =
+      document.querySelector("[data-id^='template--'][data-id*='cart-items']") ||
+      document.querySelector("#cart") ||
+      document.querySelector("form[action='/cart']") ||
+      document.querySelector("cart-drawer-items");
 
-    if (cartSection && typeof MutationObserver !== "undefined") {
+    if (cartItemsContainer && typeof MutationObserver !== "undefined") {
       let observerDebounce = null;
       const observer = new MutationObserver(() => {
+        // Skip our own section refreshes to avoid infinite loops
+        if (isRefreshingSection) return;
         // Debounce — Dawn may make several DOM changes in quick succession
         if (observerDebounce) clearTimeout(observerDebounce);
         observerDebounce = setTimeout(async () => {
@@ -545,10 +618,11 @@
           }
         }, 300);
       });
-      observer.observe(cartSection, {
+      observer.observe(cartItemsContainer, {
         childList: true,
         subtree: true,
       });
+      console.log("[Gift Widget] MutationObserver watching:", cartItemsContainer.tagName || cartItemsContainer.id);
     }
   }
 
