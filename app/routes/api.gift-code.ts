@@ -2,16 +2,19 @@ import { randomBytes } from "node:crypto";
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { authenticate, unauthenticated } from "~/shopify.server";
+import { authenticate } from "~/shopify.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
+  // Use native Shopify app proxy authentication.
+  // Shopify signs every app-proxy request with HMAC — authenticate.public.appProxy
+  // validates the signature and gives us an admin client tied to the shop's
+  // offline session. No manual session lookup, no stored-token fallback.
   let admin: any = null;
   let shopDomain: string = "";
 
-  // Strategy 1: app proxy auth
   try {
     const result = await authenticate.public.appProxy(request);
     if (result?.admin && result?.session) {
@@ -22,52 +25,15 @@ export async function action({ request }: ActionFunctionArgs) {
     console.error("[gift-code] appProxy auth failed:", e);
   }
 
-  // Strategy 2: fall back to unauthenticated.admin using shop from body or DB
   if (!admin) {
-    const body = await request.json().catch(() => null);
-    const shopParam = String(body?.shop || "");
-    shopDomain =
-      (shopParam.includes(".myshopify.com")
-        ? shopParam
-        : (await resolveShopDomain(shopParam)) || "") || "";
-
-    if (shopDomain) {
-      try {
-        const { admin: unauthAdmin } = await unauthenticated.admin(shopDomain);
-        admin = unauthAdmin;
-      } catch (e) {
-        console.error("[gift-code] unauthenticated.admin fallback failed:", e);
-      }
-    }
-
-    if (!admin) {
-      return corsJson(
-        { error: "App session is unavailable. Please reopen the app in Shopify admin." },
-        { status: 401 },
-      );
-    }
-
-    return handleGiftCode(admin, shopDomain, body);
+    return corsJson(
+      { error: "App session is unavailable. Please reopen the app in Shopify admin." },
+      { status: 401 },
+    );
   }
 
   const body = await request.json().catch(() => null);
   return handleGiftCode(admin, shopDomain, body);
-}
-
-async function resolveShopDomain(shopParam: string): Promise<string | null> {
-  if (shopParam.includes(".myshopify.com")) return shopParam;
-
-  const session = await prisma.session.findFirst({
-    orderBy: { createdAt: "desc" },
-    select: { shop: true },
-  });
-  if (session?.shop?.includes(".myshopify.com")) return session.shop;
-
-  const tier = await prisma.giftTier.findFirst({
-    where: { shopId: { contains: ".myshopify.com" } },
-    select: { shopId: true },
-  });
-  return tier?.shopId || null;
 }
 
 async function handleGiftCode(admin: any, shopDomain: string, body: any) {
@@ -101,7 +67,6 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
     (id) => `gid://shopify/ProductVariant/${id}`,
   );
 
-  // Query variant data — wrapped to avoid 500 on invalid token
   let variantData: any;
   try {
     const variantResponse = await admin.graphql(
@@ -160,7 +125,6 @@ async function handleGiftCode(admin: any, shopDomain: string, body: any) {
   const now = new Date();
   const endsAt = new Date(now.getTime() + 30 * 60 * 1000);
 
-  // Create discount code — wrapped to avoid 500 on invalid token
   let discountData: any;
   try {
     const discountResponse = await admin.graphql(

@@ -4,10 +4,10 @@
  * 1. Reads cart total from the page
  * 2. Fetches active tiers from app backend
  * 3. Determines the active threshold
- * 4. Fetches eligible gift products via Storefront API
+ * 4. Fetches eligible gift products via storefront /products.json
  * 5. Renders gift carousel
  * 6. Handles gift selection (add to cart with _gift property)
- * 7. Listens for cart updates (promo codes, item changes)
+ * 7. Listens for cart updates (promo codes, item changes, theme events)
  * 8. Auto-removes gift if threshold drops
  */
 
@@ -28,6 +28,7 @@
   let lastActiveTierId = null;
   let giftProducts = [];
   let cartRequest = null;
+  let cartUpdateDebounce = null;
 
   // ─── Init ──────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@
     const cart = await fetchCart();
     await onCartUpdate(cart);
 
-    // Listen for cart updates
+    // Listen for cart updates from theme and other sources
     listenForCartUpdates();
   }
 
@@ -77,6 +78,30 @@
       return await cartRequest;
     } finally {
       cartRequest = null;
+    }
+  }
+
+  /**
+   * Notify the theme (Dawn and others) that the cart changed.
+   * Dawn listens for "cart:updated" on window and "cart:refresh".
+   * Dispatching on both window and document covers most theme implementations.
+   */
+  function notifyThemeOfCartChange(cart) {
+    const detail = { cart, baseCart: cart };
+    try {
+      window.dispatchEvent(new CustomEvent("cart:updated", { detail }));
+    } catch (e) {
+      // Some older browsers / themes may not support CustomEvent detail
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("cart:refresh"));
+    } catch (e) {
+      // ignore
+    }
+    try {
+      document.dispatchEvent(new CustomEvent("cart:updated", { detail }));
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -115,6 +140,10 @@
   // ─── Cart update handler ───────────────────────────────────
 
   async function onCartUpdate(cart) {
+    if (!cart || typeof cart.total_price !== "number") {
+      cart = await fetchCart();
+    }
+
     const thresholdBase = getThresholdBase(cart);
     const activeTier = findActiveTier(thresholdBase);
     const maxGiftPrice = activeTier ? activeTier.giftAmount : 0;
@@ -131,7 +160,8 @@
     // No active tier → remove gift if present, hide widget
     if (!activeTier) {
       if (hasGiftInCart(cart)) {
-        await removeGiftFromCart(cart);
+        const freshCart = await removeGiftFromCart(cart);
+        if (freshCart) notifyThemeOfCartChange(freshCart);
         if (settings.showRemovalNotification) {
           showNotification("Your cart no longer qualifies for a free gift.", "warning");
         }
@@ -145,6 +175,7 @@
       const giftItem = getGiftItem(cart);
       if (giftItem && giftItem.price > maxGiftPrice) {
         const freshCart = await removeGiftFromCart(cart);
+        if (freshCart) notifyThemeOfCartChange(freshCart);
         if (settings.showRemovalNotification) {
           showNotification("Your gift was removed. Please choose a new gift.", "info");
         }
@@ -334,6 +365,8 @@
       const qualifyingVariantIds = initialCart.items
         .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
         .map((item) => String(item.variant_id));
+
+      // 1. Request a one-use discount code from the backend (native app proxy auth)
       const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -349,6 +382,7 @@
         throw new Error(codeData.error || "Unable to create gift discount.");
       }
 
+      // 2. Add the gift variant to the cart
       const addResponse = await fetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -369,6 +403,7 @@
       }
       giftAdded = true;
 
+      // 3. Apply the discount code
       const cart = await fetchCart();
       const discountCodes = (cart.discount_codes || [])
         .filter((discount) => discount.applicable !== false && discount.code)
@@ -386,11 +421,19 @@
       }
 
       const discountedCart = await updateResponse.json();
+
+      // 4. Update the widget
       await onCartUpdate(discountedCart);
+
+      // 5. Notify the theme so Dawn re-renders the cart section
+      notifyThemeOfCartChange(discountedCart);
     } catch (e) {
       if (giftAdded) {
         const cart = await fetchCart().catch(() => null);
-        if (cart) await removeGiftFromCart(cart);
+        if (cart) {
+          const freshCart = await removeGiftFromCart(cart);
+          if (freshCart) notifyThemeOfCartChange(freshCart);
+        }
       }
       console.error("[Gift Widget] Failed to add gift:", e);
       showNotification(e.message || "Unable to add this gift.", "warning");
@@ -402,7 +445,7 @@
 
   async function removeGiftFromCart(cart) {
     const giftItem = getGiftItem(cart);
-    if (!giftItem) return;
+    if (!giftItem) return null;
 
     try {
       const response = await fetch("/cart/change.js", {
@@ -426,19 +469,75 @@
   async function removeGift() {
     const cart = await fetchCart();
     const freshCart = await removeGiftFromCart(cart);
-    if (freshCart) await onCartUpdate(freshCart);
+    if (freshCart) {
+      await onCartUpdate(freshCart);
+      notifyThemeOfCartChange(freshCart);
+    }
   }
 
   // ─── Cart update listener ──────────────────────────────────
 
+  /**
+   * Listen for cart changes from multiple sources:
+   * - Dawn's "cart:updated" event (dispatched on window after AJAX cart ops)
+   * - Dawn's "cart:refresh" event
+   * - Generic "cart:change" event
+   * - DOM mutations on the cart form (catches section-rendering updates)
+   *
+   * All paths are debounced to avoid redundant fetches.
+   */
   function listenForCartUpdates() {
-    // Listen for theme cart events
-    document.addEventListener("cart:updated", async (event) => {
-      const eventCart = event.detail?.cart;
-      const cart = typeof eventCart?.total_price === "number" ? eventCart : await fetchCart();
-      await onCartUpdate(cart);
+    // Debounced handler — collapses rapid events into a single cart refresh
+    function scheduleCartRefresh() {
+      if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
+      cartUpdateDebounce = setTimeout(async () => {
+        cartUpdateDebounce = null;
+        const cart = await fetchCart();
+        await onCartUpdate(cart);
+      }, 300);
+    }
+
+    // Dawn dispatches cart events on window
+    ["cart:updated", "cart:refresh", "cart:change"].forEach((eventName) => {
+      window.addEventListener(eventName, async (event) => {
+        const eventCart = event?.detail?.cart || event?.detail?.baseCart;
+        if (eventCart && typeof eventCart.total_price === "number") {
+          // Use the cart from the event if available — avoids an extra fetch
+          if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
+          cartUpdateDebounce = null;
+          await onCartUpdate(eventCart);
+        } else {
+          scheduleCartRefresh();
+        }
+      });
+
+      // Also listen on document for themes that dispatch there
+      document.addEventListener(eventName, async (event) => {
+        const eventCart = event?.detail?.cart || event?.detail?.baseCart;
+        if (eventCart && typeof eventCart.total_price === "number") {
+          if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
+          cartUpdateDebounce = null;
+          await onCartUpdate(eventCart);
+        } else {
+          scheduleCartRefresh();
+        }
+      });
     });
 
+    // Fallback: observe the cart form for DOM changes (Dawn re-renders sections)
+    const cartForm = document.querySelector('form[action="/cart"]') ||
+                     document.querySelector("#cart") ||
+                     document.querySelector("[data-cart-section]");
+    if (cartForm) {
+      const observer = new MutationObserver(() => {
+        scheduleCartRefresh();
+      });
+      observer.observe(cartForm, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
   }
 
   // ─── Utils ─────────────────────────────────────────────────
