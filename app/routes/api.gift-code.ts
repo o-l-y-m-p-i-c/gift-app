@@ -147,18 +147,23 @@ async function handleGiftCode(shopDomain: string, body: any) {
           code,
           startsAt: now.toISOString(),
           endsAt: endsAt.toISOString(),
-          customerSelection: { all: "ALL" },
-          // 100% off on the gift variants
-          value: {
-            percentage: 100,
+          // context: all buyers are eligible
+          context: {
+            all: true,
           },
-          appliesTo: {
-            products: {
-              productVariantsToAdd: giftVariantGids,
+          // 100% off on the gift variants
+          customerGets: {
+            value: {
+              percentage: 1.0,
+            },
+            items: {
+              products: {
+                productVariantsToAdd: giftVariantGids,
+              },
             },
           },
           // Minimum purchase requirement: must have qualifying items in cart
-          minimumRequirements: {
+          minimumRequirement: {
             subtotal: {
               greaterThanOrEqualToSubtotal: (tier.minAmount / 100).toFixed(2),
             },
