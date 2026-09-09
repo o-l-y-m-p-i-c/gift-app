@@ -162,12 +162,6 @@ async function handleGiftCode(shopDomain: string, body: any) {
               },
             },
           },
-          // Minimum purchase requirement: must have qualifying items in cart
-          minimumRequirement: {
-            subtotal: {
-              greaterThanOrEqualToSubtotal: (tier.minAmount / 100).toFixed(2),
-            },
-          },
           usageLimit: 1,
           appliesOncePerCustomer: false,
           combinesWith: {
