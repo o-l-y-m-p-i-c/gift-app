@@ -42,7 +42,7 @@ export async function action({ request }: ActionFunctionArgs) {
  */
 async function handleGiftCode(shopDomain: string, body: any) {
   const giftVariantIds: string[] = Array.isArray(body?.giftVariantIds)
-    ? [...new Set<string>(body.giftVariantIds.map((id: unknown) => String(id)))]
+    ? body.giftVariantIds.map((id: unknown) => String(id))
     : [];
   const tierId = Number(body?.tierId);
   const qualifyingVariantIds: string[] = Array.isArray(body?.qualifyingVariantIds)
@@ -69,7 +69,13 @@ async function handleGiftCode(shopDomain: string, body: any) {
     return corsJson({ error: "Gift tier is unavailable." }, { status: 404 });
   }
 
-  const giftVariantGids = giftVariantIds.map(
+  // giftVariantIds may contain duplicates (same variant added multiple times).
+  // The total count is used for discountOnQuantity.quantity.
+  // Unique IDs are used for productVariantsToAdd (targeting).
+  const giftQuantity = giftVariantIds.length;
+  const uniqueGiftVariantIds = [...new Set(giftVariantIds)];
+
+  const giftVariantGids = uniqueGiftVariantIds.map(
     (id) => `gid://shopify/ProductVariant/${id}`,
   );
   const qualifyingVariantGids = qualifyingVariantIds.map(
@@ -109,8 +115,8 @@ async function handleGiftCode(shopDomain: string, body: any) {
   const giftNodes = nodes.slice(0, giftVariantGids.length);
   const qualifyingNodes = nodes.slice(giftVariantGids.length);
 
-  // Validate gift variants: active, available, priced, within budget
-  let totalGiftValue = 0;
+  // Map: variant GID → price (for counting duplicates)
+  const giftPriceMap = new Map<string, number>();
   for (const gv of giftNodes) {
     const price = Math.round(Number(gv?.price || 0) * 100);
     if (
@@ -123,7 +129,18 @@ async function handleGiftCode(shopDomain: string, body: any) {
     if (price > tier.giftAmount) {
       return corsJson({ error: "Gift product exceeds the tier budget." }, { status: 422 });
     }
-    totalGiftValue += price;
+    giftPriceMap.set(gv.id, price);
+  }
+
+  // Calculate total gift value: sum of each gift unit (including duplicates)
+  let totalGiftValue = 0;
+  const giftIdCounts = new Map<string, number>();
+  for (const id of giftVariantIds) {
+    giftIdCounts.set(id, (giftIdCounts.get(id) || 0) + 1);
+  }
+  for (const [id, count] of giftIdCounts) {
+    const gid = `gid://shopify/ProductVariant/${id}`;
+    totalGiftValue += (giftPriceMap.get(gid) || 0) * count;
   }
 
   if (totalGiftValue > tier.giftAmount) {
@@ -180,7 +197,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
           customerGets: {
             value: {
               discountOnQuantity: {
-                quantity: String(giftVariantIds.length),
+                quantity: String(giftQuantity),
                 effect: { percentage: 1.0 },
               },
             },

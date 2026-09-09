@@ -626,11 +626,14 @@
         .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
         .map((item) => String(item.variant_id));
 
-      // Collect ALL gift variant IDs: existing gifts + the new one
+      // Collect ALL gift variant IDs: existing gifts + the new one.
+      // Include duplicates for quantity > 1 (same variant added multiple times).
+      // The backend uses the count for discountOnQuantity.quantity and
+      // deduplicates for productVariantsToAdd.
       const existingGiftVariantIds = initialCart.items
         .filter((item) => item.properties?.[GIFT_PROPERTY_KEY])
-        .map((item) => String(item.variant_id));
-      const allGiftVariantIds = [...new Set([...existingGiftVariantIds, variantId])];
+        .flatMap((item) => Array(Math.max(1, item.quantity)).fill(String(item.variant_id)));
+      const allGiftVariantIds = [...existingGiftVariantIds, variantId];
 
       // 1. Request a single discount code covering ALL gifts
       const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
@@ -749,8 +752,10 @@
       const remainingGifts = getGiftItems(updatedCart);
 
       if (remainingGifts.length > 0) {
-        // Recreate discount code for remaining gifts
-        const remainingGiftVariantIds = remainingGifts.map((g) => String(g.variant_id));
+        // Recreate discount code for remaining gifts.
+        // Include duplicates for quantity > 1.
+        const remainingGiftVariantIds = remainingGifts
+          .flatMap((g) => Array(Math.max(1, g.quantity)).fill(String(g.variant_id)));
         const qualifyingVariantIds = updatedCart.items
           .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
           .map((item) => String(item.variant_id));
