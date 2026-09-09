@@ -3,12 +3,17 @@
  *
  * Architecture:
  * - The widget script lives inside the cart section as an app block.
- * - When Dawn re-renders the cart section (add/remove/update), the script
- *   tag runs again. On first run we set up state + event listeners. On
- *   subsequent runs (after section re-render) we only re-render into the
- *   new container — listeners on window/document persist.
- * - After our own AJAX cart mutations we refresh the cart section via the
- *   Shopify Section Rendering API so Dawn shows the updated line items.
+ * - When Dawn re-renders the cart section, the script tag runs again.
+ *   On first run we set up state + event listeners. On subsequent runs
+ *   we only re-render into the new container.
+ * - After our own AJAX cart mutations we refresh the cart section via
+ *   the Shopify Section Rendering API so Dawn shows updated line items.
+ *
+ * Loading states:
+ * - init() shows a spinner immediately
+ * - selectGift() disables all buttons + shows spinner on clicked button
+ * - removeGift() disables remove button + shows spinner
+ * - Error states show inline with a retry option
  */
 
 (function () {
@@ -17,7 +22,6 @@
 
   // ─── Re-initialization after section re-render ─────────────
   if (window.giftWidgetInitialized) {
-    // Section was re-rendered by Dawn — just render into the new container.
     if (window.giftWidget && typeof window.giftWidget._init === "function") {
       window.giftWidget._init();
     }
@@ -39,7 +43,9 @@
   let giftProducts = [];
   let cartRequest = null;
   let cartUpdateDebounce = null;
-  let isRefreshingSection = false; // prevents MutationObserver loop
+  let isRefreshingSection = false;
+  let isSelectingGift = false;
+  let isRemovingGift = false;
 
   // ─── Init ──────────────────────────────────────────────────
 
@@ -47,10 +53,13 @@
     const el = document.getElementById("gift-widget-container");
     if (!el) return;
 
+    // Show loading indicator immediately
+    renderLoading(el);
+
     const shopDomain = el.dataset.shop;
     const appUrl = getAppUrl();
 
-    // Fetch tiers and settings (only needed once, but safe to re-fetch)
+    // Fetch tiers and settings
     try {
       const [tiersData, settingsData] = await Promise.all([
         fetchJson(`${appUrl}/tiers?shop=${shopDomain}`),
@@ -60,11 +69,20 @@
       settings = settingsData.settings || settings;
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch config:", e);
-      el.innerHTML = `<div class="gift-widget"><p class="gift-widget__subtitle">Gift configuration is temporarily unavailable.</p></div>`;
+      renderError(el, "Gift configuration is temporarily unavailable.", () => init());
       return;
     }
 
-    const cart = await fetchCart();
+    // Fetch cart
+    let cart;
+    try {
+      cart = await fetchCart();
+    } catch (e) {
+      console.error("[Gift Widget] Failed to fetch cart:", e);
+      renderError(el, "Unable to load your cart. Please refresh the page.", () => init());
+      return;
+    }
+
     await onCartUpdate(cart);
   }
 
@@ -88,75 +106,38 @@
   }
 
   /**
-   * Refresh the cart section via Shopify Section Rendering API.
-   * This makes Dawn re-render the cart line items (and the widget block).
-   * After the section is replaced, the widget script runs again and
-   * re-initializes via _init().
-   */
-  /**
    * Refresh the cart UI after AJAX operations.
    * Works with Dawn theme (cart page + cart drawer + header cart icon).
-   *
-   * Dawn has three cart surfaces:
-   *   1. Cart page: form#cart inside section with data-id="template--...__cart-items"
-   *   2. Cart drawer: <cart-drawer> with <cart-drawer-items> form#CartDrawer-Form
-   *   3. Header cart icon: #cart-icon-bubble with .cart-count-bubble
-   *
-   * Strategy:
-   *   1. Dispatch 'cart:refresh' event — Dawn's own JS catches this and
-   *      re-renders the cart sections itself (this is the native Dawn way).
-   *   2. Also fetch and replace the cart page section manually as a fallback
-   *      for when Dawn's JS doesn't handle it.
-   *   3. Refresh the cart drawer if it exists.
-   *   4. Update the header cart icon count bubble.
-   *   5. Re-execute scripts and re-init the widget after replacing HTML.
    */
   async function refreshCartSection() {
     isRefreshingSection = true;
 
-    // Fetch current cart once — used for events and count updates
     const cart = await fetchCart().catch(() => null);
 
     try {
-      // Step 1: Dispatch Dawn's native cart refresh events.
-      // Dawn's cart.js and cart-drawer.js listen for these and re-render sections.
-      document.dispatchEvent(new CustomEvent("cart:refresh", {
-        detail: { cart },
-      }));
-      document.dispatchEvent(new CustomEvent("cart:updated", {
-        detail: { cart },
-      }));
-      console.log("[Gift Widget] Dispatched cart:refresh and cart:updated events");
+      document.dispatchEvent(new CustomEvent("cart:refresh", { detail: { cart } }));
+      document.dispatchEvent(new CustomEvent("cart:updated", { detail: { cart } }));
     } catch (e) {
       console.warn("[Gift Widget] Event dispatch failed:", e);
     }
 
-    // Step 2: Manually refresh the cart page section as fallback.
-    // Find the section ID from the cart items container.
+    // Refresh cart page section
     const cartItemsDiv = document.querySelector("[data-id^='template--'][data-id*='cart-items']");
     const sectionId = cartItemsDiv?.getAttribute("data-id");
 
     if (sectionId) {
       try {
-        console.log("[Gift Widget] Fetching cart section:", sectionId);
         const res = await fetch(`${window.location.pathname}?section_id=${sectionId}`, {
           headers: { Accept: "text/html" },
         });
-
         if (res.ok) {
           const html = await res.text();
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, "text/html");
-
-          // Find the cart items container in the response
           const newCartItems = doc.querySelector(`[data-id="${sectionId}"]`);
           const oldCartItems = document.querySelector(`[data-id="${sectionId}"]`);
-
           if (newCartItems && oldCartItems) {
-            // Replace the cart items content
             oldCartItems.innerHTML = newCartItems.innerHTML;
-
-            // Re-execute scripts inside the replaced content
             const scripts = oldCartItems.querySelectorAll("script");
             scripts.forEach((oldScript) => {
               const newScript = document.createElement("script");
@@ -166,8 +147,6 @@
               newScript.textContent = oldScript.textContent;
               oldScript.parentNode.replaceChild(newScript, oldScript);
             });
-
-            console.log("[Gift Widget] Cart items section replaced");
           }
         }
       } catch (e) {
@@ -175,7 +154,7 @@
       }
     }
 
-    // Step 3: Also refresh the cart drawer if it exists
+    // Refresh cart drawer
     const cartDrawerItems = document.querySelector("cart-drawer-items");
     if (cartDrawerItems) {
       try {
@@ -187,9 +166,8 @@
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, "text/html");
           const newDrawerItems = doc.querySelector("cart-drawer-items");
-          if (newDrawerItems && cartDrawerItems) {
+          if (newDrawerItems) {
             cartDrawerItems.innerHTML = newDrawerItems.innerHTML;
-            console.log("[Gift Widget] Cart drawer section replaced");
           }
         }
       } catch (e) {
@@ -197,24 +175,17 @@
       }
     }
 
-    // Step 4: Update the header cart icon count bubble
-    if (cart) {
-      updateCartCountBubble(cart);
-    }
+    // Update header cart icon count
+    if (cart) updateCartCountBubble(cart);
 
-    // Step 5: Re-initialize the gift widget into the (possibly new) container
+    // Re-initialize the gift widget
     if (window.giftWidget && typeof window.giftWidget._init === "function") {
       await window.giftWidget._init();
     }
 
     isRefreshingSection = false;
-    console.log("[Gift Widget] Cart refresh complete");
   }
 
-  /**
-   * Update the header cart icon count bubble (#cart-icon-bubble).
-   * Dawn shows item count in .cart-count-bubble inside #cart-icon-bubble.
-   */
   function updateCartCountBubble(cart) {
     const bubble = document.querySelector("#cart-icon-bubble .cart-count-bubble");
     if (!bubble) return;
@@ -239,11 +210,9 @@
       (item) => item.properties && item.properties[GIFT_PROPERTY_KEY],
     );
     const giftPrice = giftItem ? giftItem.final_line_price : 0;
-
     const base = settings.useTotalAfterDiscounts
       ? cart.total_price
       : cart.items_subtotal_price;
-
     return base - giftPrice;
   }
 
@@ -330,15 +299,57 @@
 
   // ─── Rendering ─────────────────────────────────────────────
 
+  function renderLoading(el) {
+    el.innerHTML = `
+      <div class="gift-widget gift-widget--loading">
+        <div class="gift-widget__spinner"></div>
+        <p class="gift-widget__subtitle">Loading gifts…</p>
+      </div>
+    `;
+  }
+
+  function renderError(el, message, retryFn) {
+    el.innerHTML = `
+      <div class="gift-widget gift-widget--error">
+        <div class="gift-widget__header">
+          <span class="gift-widget__icon">⚠️</span>
+          <div>
+            <h3 class="gift-widget__title">Something went wrong</h3>
+            <p class="gift-widget__subtitle">${message}</p>
+          </div>
+        </div>
+        <button type="button" class="gift-widget__retry" id="gift-widget-retry">
+          Try again
+        </button>
+      </div>
+    `;
+    const retryBtn = el.querySelector("#gift-widget-retry");
+    if (retryBtn && retryFn) {
+      retryBtn.addEventListener("click", retryFn);
+    }
+  }
+
   async function renderWidget(cart, tier, maxGiftPrice) {
     const el = document.getElementById("gift-widget-container");
     if (!el) return;
+
+    // Show loading while fetching products
+    renderLoading(el);
 
     const cartVariantIds = new Set(
       cart.items.map((item) => String(item.variant_id)),
     );
 
-    const products = await fetchGiftProducts(maxGiftPrice, cartVariantIds);
+    let products;
+    try {
+      products = await fetchGiftProducts(maxGiftPrice, cartVariantIds);
+    } catch (e) {
+      console.error("[Gift Widget] Failed to fetch products:", e);
+      renderError(el, "Unable to load gift products.", () =>
+        renderWidget(cart, tier, maxGiftPrice),
+      );
+      return;
+    }
     giftProducts = products;
 
     if (products.length === 0) {
@@ -367,7 +378,8 @@
             <p class="gift-widget__price">${formatPrice(p.price)}</p>
           </div>
           <button type="button" class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}', '${tier.id}')">
-            Select
+            <span class="gift-widget__select-label">Select</span>
+            <span class="gift-widget__select-spinner" style="display:none"></span>
           </button>
         </div>
       `,
@@ -405,8 +417,9 @@
             <p class="gift-widget__subtitle">${giftItem.product_title}</p>
           </div>
         </div>
-        <button class="gift-widget__remove" onclick="window.giftWidget.removeGift()">
-          Remove gift
+        <button class="gift-widget__remove" id="gift-widget-remove-btn" onclick="window.giftWidget.removeGift()">
+          <span class="gift-widget__remove-label">Remove gift</span>
+          <span class="gift-widget__remove-spinner" style="display:none"></span>
         </button>
       </div>
     `;
@@ -420,65 +433,69 @@
   // ─── Gift products fetch ───────────────────────────────────
 
   async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set()) {
-    try {
-      const allProducts = [];
-      let page = 1;
-      const perPage = 250;
-      while (page <= 4) {
-        const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
-          headers: { Accept: "application/json" },
-        });
-        if (!res.ok) break;
-        const data = await res.json();
-        const products = data.products || [];
-        if (products.length === 0) break;
-        allProducts.push(...products);
-        if (products.length < perPage) break;
-        page++;
-      }
+    const allProducts = [];
+    let page = 1;
+    const perPage = 250;
+    while (page <= 4) {
+      const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) break;
+      const data = await res.json();
+      const products = data.products || [];
+      if (products.length === 0) break;
+      allProducts.push(...products);
+      if (products.length < perPage) break;
+      page++;
+    }
 
-      const eligible = [];
-      for (const product of allProducts) {
-        const image = product.images?.[0]?.src || "";
-        for (const variant of product.variants || []) {
-          const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
-          if (
-            priceCents > 0 &&
-            priceCents <= maxPrice &&
-            variant.available !== false &&
-            !excludeVariantIds.has(String(variant.id))
-          ) {
-            eligible.push({
-              productId: String(product.id),
-              variantId: String(variant.id),
-              title:
-                variant.title === "Default Title"
-                  ? product.title
-                  : `${product.title} — ${variant.title}`,
-              price: priceCents,
-              image,
-            });
-          }
+    const eligible = [];
+    for (const product of allProducts) {
+      const image = product.images?.[0]?.src || "";
+      for (const variant of product.variants || []) {
+        const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
+        if (
+          priceCents > 0 &&
+          priceCents <= maxPrice &&
+          variant.available !== false &&
+          !excludeVariantIds.has(String(variant.id))
+        ) {
+          eligible.push({
+            productId: String(product.id),
+            variantId: String(variant.id),
+            title:
+              variant.title === "Default Title"
+                ? product.title
+                : `${product.title} — ${variant.title}`,
+            price: priceCents,
+            image,
+          });
         }
       }
-
-      console.log(`[Gift Widget] Found ${eligible.length} eligible gifts (maxPrice=${maxPrice} cents) from ${allProducts.length} products`);
-      return eligible;
-    } catch (e) {
-      console.error("[Gift Widget] Failed to fetch products:", e);
-      return [];
     }
+
+    console.log(`[Gift Widget] Found ${eligible.length} eligible gifts from ${allProducts.length} products`);
+    return eligible;
   }
 
   // ─── Cart actions ──────────────────────────────────────────
 
   async function selectGift(variantId, tierId) {
-    const buttons = document.querySelectorAll(".gift-widget__select");
-    let giftAdded = false;
-    buttons.forEach((button) => {
-      button.disabled = true;
-    });
+    if (isSelectingGift) return;
+    isSelectingGift = true;
 
+    // Disable all select buttons + show spinner on the clicked one
+    const allButtons = document.querySelectorAll(".gift-widget__select");
+    allButtons.forEach((btn) => { btn.disabled = true; });
+
+    const clickedCard = document.querySelector(`[data-variant-id="${variantId}"]`);
+    const clickedBtn = clickedCard?.querySelector(".gift-widget__select");
+    const clickedLabel = clickedBtn?.querySelector(".gift-widget__select-label");
+    const clickedSpinner = clickedBtn?.querySelector(".gift-widget__select-spinner");
+    if (clickedLabel) clickedLabel.style.display = "none";
+    if (clickedSpinner) clickedSpinner.style.display = "inline-block";
+
+    let giftAdded = false;
     const shopDomain =
       document.getElementById("gift-widget-container")?.dataset.shop || "";
 
@@ -488,7 +505,7 @@
         .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
         .map((item) => String(item.variant_id));
 
-      // 1. Request a one-use discount code
+      // 1. Request discount code
       const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -504,7 +521,7 @@
         throw new Error(codeData.error || "Unable to create gift discount.");
       }
 
-      // 2. Add the gift variant to the cart
+      // 2. Add gift to cart
       const addResponse = await fetch("/cart/add.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -518,18 +535,17 @@
           ],
         }),
       });
-
       if (!addResponse.ok) {
         const error = await addResponse.json().catch(() => ({}));
         throw new Error(error.description || "Unable to add this gift.");
       }
       giftAdded = true;
 
-      // 3. Apply the discount code
+      // 3. Apply discount code
       const cart = await fetchCart();
       const discountCodes = (cart.discount_codes || [])
-        .filter((discount) => discount.applicable !== false && discount.code)
-        .map((discount) => discount.code);
+        .filter((d) => d.applicable !== false && d.code)
+        .map((d) => d.code);
       const updateResponse = await fetch("/cart/update.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -537,14 +553,11 @@
           discount: [...new Set([...discountCodes, codeData.code])].join(","),
         }),
       });
-
       if (!updateResponse.ok) {
         throw new Error("Unable to apply the gift discount.");
       }
 
-      // 4. Refresh the cart section so Dawn shows the new item + discount.
-      //    This replaces the section HTML (including the widget block),
-      //    and the widget script re-runs and re-initializes via _init().
+      // 4. Refresh cart section
       await refreshCartSection();
     } catch (e) {
       if (giftAdded) {
@@ -556,9 +569,13 @@
       }
       console.error("[Gift Widget] Failed to add gift:", e);
       showNotification(e.message || "Unable to add this gift.", "warning");
-      buttons.forEach((button) => {
-        button.disabled = false;
-      });
+
+      // Re-enable buttons
+      allButtons.forEach((btn) => { btn.disabled = false; });
+      if (clickedLabel) clickedLabel.style.display = "";
+      if (clickedSpinner) clickedSpinner.style.display = "none";
+    } finally {
+      isSelectingGift = false;
     }
   }
 
@@ -566,39 +583,52 @@
     const giftItem = getGiftItem(cart);
     if (!giftItem) return null;
 
-    try {
-      const response = await fetch("/cart/change.js", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: giftItem.key,
-          quantity: 0,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(`Unable to remove gift (${response.status}).`);
-      }
-      return response.json();
-    } catch (e) {
-      console.error("[Gift Widget] Failed to remove gift:", e);
-      return null;
+    const response = await fetch("/cart/change.js", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: giftItem.key, quantity: 0 }),
+    });
+    if (!response.ok) {
+      throw new Error(`Unable to remove gift (${response.status}).`);
     }
+    return response.json();
   }
 
   async function removeGift() {
-    const cart = await fetchCart();
-    await removeGiftFromCart(cart);
-    // Refresh cart section — widget will re-initialize and show gift selection
-    await refreshCartSection();
+    if (isRemovingGift) return;
+    isRemovingGift = true;
+
+    // Disable remove button + show spinner
+    const removeBtn = document.getElementById("gift-widget-remove-btn");
+    if (removeBtn) {
+      removeBtn.disabled = true;
+      const label = removeBtn.querySelector(".gift-widget__remove-label");
+      const spinner = removeBtn.querySelector(".gift-widget__remove-spinner");
+      if (label) label.style.display = "none";
+      if (spinner) spinner.style.display = "inline-block";
+    }
+
+    try {
+      const cart = await fetchCart();
+      await removeGiftFromCart(cart);
+      await refreshCartSection();
+    } catch (e) {
+      console.error("[Gift Widget] Failed to remove gift:", e);
+      showNotification("Unable to remove gift. Please try again.", "warning");
+      if (removeBtn) {
+        removeBtn.disabled = false;
+        const label = removeBtn.querySelector(".gift-widget__remove-label");
+        const spinner = removeBtn.querySelector(".gift-widget__remove-spinner");
+        if (label) label.style.display = "";
+        if (spinner) spinner.style.display = "none";
+      }
+    } finally {
+      isRemovingGift = false;
+    }
   }
 
   // ─── Cart update listener ──────────────────────────────────
 
-  /**
-   * Listen for cart changes from Dawn and other sources.
-   * These listeners are set up ONCE (on first script execution) and
-   * persist across section re-renders because they're on window/document.
-   */
   function listenForCartUpdates() {
     function scheduleCartRefresh() {
       if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
@@ -609,9 +639,9 @@
       }, 300);
     }
 
-    // Dawn dispatches cart events on window after AJAX operations
     ["cart:updated", "cart:refresh", "cart:change"].forEach((eventName) => {
       window.addEventListener(eventName, async (event) => {
+        if (isSelectingGift || isRemovingGift) return;
         const eventCart = event?.detail?.cart || event?.detail?.baseCart;
         if (eventCart && typeof eventCart.total_price === "number") {
           if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
@@ -623,9 +653,7 @@
       });
     });
 
-    // MutationObserver: catches Dawn's section re-renders that don't
-    // dispatch cart events (e.g. quantity changes, item removals).
-    // Watch the cart items container and the cart drawer.
+    // MutationObserver for Dawn's section re-renders
     const cartItemsContainer =
       document.querySelector("[data-id^='template--'][data-id*='cart-items']") ||
       document.querySelector("#cart") ||
@@ -635,31 +663,22 @@
     if (cartItemsContainer && typeof MutationObserver !== "undefined") {
       let observerDebounce = null;
       const observer = new MutationObserver(() => {
-        // Skip our own section refreshes to avoid infinite loops
-        if (isRefreshingSection) return;
-        // Debounce — Dawn may make several DOM changes in quick succession
+        if (isRefreshingSection || isSelectingGift || isRemovingGift) return;
         if (observerDebounce) clearTimeout(observerDebounce);
         observerDebounce = setTimeout(async () => {
           observerDebounce = null;
-          // Check if the widget container still exists and has content.
-          // If it was replaced/emptied by Dawn, re-init the widget.
           const el = document.getElementById("gift-widget-container");
           if (!el || el.children.length === 0) {
             if (window.giftWidget && typeof window.giftWidget._init === "function") {
               await window.giftWidget._init();
             }
           } else {
-            // Container still has content — just refresh state from cart
             const cart = await fetchCart();
             await onCartUpdate(cart);
           }
         }, 300);
       });
-      observer.observe(cartItemsContainer, {
-        childList: true,
-        subtree: true,
-      });
-      console.log("[Gift Widget] MutationObserver watching:", cartItemsContainer.tagName || cartItemsContainer.id);
+      observer.observe(cartItemsContainer, { childList: true, subtree: true });
     }
   }
 
@@ -674,9 +693,7 @@
   }
 
   async function fetchJson(url) {
-    const response = await fetch(url, {
-      headers: getFetchHeaders(),
-    });
+    const response = await fetch(url, { headers: getFetchHeaders() });
     const contentType = response.headers.get("content-type") || "unknown";
     const body = await response.text();
     const normalizedBody = body.replace(/^\uFEFF/, "").trim();
@@ -721,13 +738,11 @@
   window.giftWidget = {
     selectGift,
     removeGift,
-    _init: init, // exposed for re-initialization after section re-render
+    _init: init,
   };
 
-  // Set up event listeners once
   listenForCartUpdates();
 
-  // Start
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
