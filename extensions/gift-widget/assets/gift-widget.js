@@ -437,10 +437,13 @@
       `;
 
       // Now fetch products for remaining budget
-      const cartVariantIds = new Set(cart.items.map((item) => String(item.variant_id)));
-      // Exclude already-selected gift variants
-      const giftVariantIds = new Set(giftItems.map((item) => String(item.variant_id)));
-      const excludeIds = new Set([...cartVariantIds, ...giftVariantIds]);
+      // Exclude regular cart items (non-gift), but allow selecting the same
+      // gift product multiple times until budget is exhausted.
+      const excludeIds = new Set(
+        cart.items
+          .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
+          .map((item) => String(item.variant_id)),
+      );
 
       let products;
       try {
