@@ -1,6 +1,7 @@
 {% comment %}
-  Gift Drawer Widget — Compact app block for the Dawn cart drawer.
+  Gift Drawer Widget — Compact app block for the Prestige cart drawer.
   Shows gift budget progress and a CTA to /cart when a gift tier is active.
+  Styled for Prestige theme (Maestrooo) using theme CSS variables.
 
   Place via: Online Store → Customize → Cart drawer → Add block → Gift Drawer Widget
   The block works on all templates because the cart drawer is global.
@@ -22,6 +23,7 @@
 {% if label_full == blank %}{% assign label_full = 'gift.drawer.label_full' | t %}{% endif %}
 
 <div data-gift-drawer-widget
+     class="color-scheme color-scheme--{{ settings.default_color_scheme.id }}"
      data-shop="{{ request.host }}"
      data-show-remaining="{{ block.settings.show_remaining | default: true }}"
      data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
