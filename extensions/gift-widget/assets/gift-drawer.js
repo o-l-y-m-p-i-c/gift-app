@@ -34,6 +34,33 @@
   let isRendering = false;
   let lastCart = null;
 
+  // ─── Translations ──────────────────────────────────────────
+
+  let _translations = null;
+  function getTranslations() {
+    if (_translations) return _translations;
+    try {
+      const el = document.querySelector("[data-gift-drawer-translations]");
+      if (el) _translations = JSON.parse(el.textContent);
+    } catch (e) {
+      console.warn("[Gift Drawer] Failed to parse translations:", e);
+    }
+    if (!_translations) _translations = {};
+    return _translations;
+  }
+
+  function t(key, vars) {
+    const tr = getTranslations();
+    let str = tr[key];
+    if (str == null) return key;
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        str = str.replace(new RegExp(`{{\\s*${k}\\s*}}`, "g"), v);
+      }
+    }
+    return str;
+  }
+
   // ─── Settings ──────────────────────────────────────────────
 
   function getSetting(key, fallback) {
@@ -220,7 +247,7 @@
           const fullLabel = getSetting("labelFull", "Your gift budget is fully used");
           html += `<p class="gift-drawer-widget__budget gift-drawer-widget__budget--full">${fullLabel}</p>`;
         } else if (showRemaining) {
-          html += `<p class="gift-drawer-widget__budget">${G.formatPrice(remainingBudget)} remaining</p>`;
+          html += `<p class="gift-drawer-widget__budget">${t("remaining", { amount: G.formatPrice(remainingBudget) })}</p>`;
         }
 
         // CTA
@@ -293,7 +320,7 @@
 
     return `
       <div class="gift-drawer-widget__products">
-        <p class="gift-drawer-widget__products-label">Available gifts</p>
+        <p class="gift-drawer-widget__products-label">${t("available_gifts")}</p>
         <div class="gift-drawer-widget__products-grid">${cards}</div>
       </div>
     `;

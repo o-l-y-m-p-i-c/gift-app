@@ -1,1 +1,49 @@
-{}
+{
+  "gift": {
+    "title": "Free Gifts",
+    "loading": "Loading gifts…",
+    "error_title": "Something went wrong",
+    "retry": "Try again",
+    "select": "Select",
+    "gift_budget": "{{ amount }} gift budget",
+    "gift_budget_max": "{{ amount }} gift budget — max tier!",
+    "to_unlock_next": "{{ amount }} to unlock {{ budget }}",
+    "to_unlock_first": "{{ amount }} to unlock your first gift",
+    "unlock_more": "Add more items to your cart to unlock free gifts!",
+    "budget_full": "🎁 Your gift budget of {{ amount }} is fully used!",
+    "unable_load": "Unable to load gift products.",
+    "no_products": "No eligible products found under {{ amount }}.",
+    "choose_up_to": "Choose gifts up to {{ amount }}",
+    "remaining": "{{ amount }} remaining",
+    "budget_label": "Budget: {{ amount }}",
+    "unlock_free": "Unlock free gifts",
+    "drawer": {
+      "cta_choose": "Choose your gifts",
+      "cta_more": "Choose more gifts",
+      "cta_manage": "Manage gifts",
+      "label_unlock": "Add {{ amount }} more to unlock free gifts",
+      "label_unlocked": "You unlocked {{ budget }} in free gifts",
+      "label_used": "Used {{ amount }} · Remaining {{ remaining }}",
+      "label_full": "Your gift budget is fully used",
+      "available_gifts": "Available gifts",
+      "remaining": "{{ amount }} remaining"
+    },
+    "product": {
+      "button_label": "Add as gift",
+      "disabled_label": "Add more to unlock gifts",
+      "over_budget_label": "Exceeds remaining gift budget",
+      "unavailable_label": "Unavailable as gift",
+      "loading_label": "Adding gift…",
+      "error_label": "Could not add free gift — try again",
+      "added": "Gift added to cart!",
+      "remaining_budget": "Remaining gift budget: {{ amount }}",
+      "add_more": "Add {{ amount }} more to unlock gifts"
+    },
+    "notifications": {
+      "tier_unlocked": "🎉 New gift tier unlocked! Choose gifts up to {{ amount }}",
+      "removed_discount": "Your gifts were removed because the full gift discount was not applied.",
+      "removed_no_qualify": "Your cart no longer qualifies for a free gift.",
+      "removed_choose_again": "Your gifts were removed. Please choose again."
+    }
+  }
+}

@@ -43,6 +43,33 @@
     console.warn("[Product Gift Button] Could not parse variant JSON");
   }
 
+  // ─── Translations ──────────────────────────────────────────
+
+  let _translations = null;
+  function getTranslations() {
+    if (_translations) return _translations;
+    try {
+      const el = document.querySelector("[data-gift-product-translations]");
+      if (el) _translations = JSON.parse(el.textContent);
+    } catch (e) {
+      console.warn("[Product Gift Button] Failed to parse translations:", e);
+    }
+    if (!_translations) _translations = {};
+    return _translations;
+  }
+
+  function t(key, vars) {
+    const tr = getTranslations();
+    let str = tr[key];
+    if (str == null) return key;
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        str = str.replace(new RegExp(`{{\\s*${k}\\s*}}`, "g"), v);
+      }
+    }
+    return str;
+  }
+
   // ─── State ──────────────────────────────────────────────────
 
   let currentVariantId = container.dataset.variantId || "";
@@ -172,7 +199,7 @@
 
       if (eligibility.eligible) {
         const remainingText = container.dataset.showRemaining === "true" && eligibility.remainingBudget != null
-          ? `Remaining gift budget: ${G.formatPrice(eligibility.remainingBudget)}`
+          ? t("remaining_budget", { amount: G.formatPrice(eligibility.remainingBudget) })
           : "";
         setButtonState({
           label: getLabel("buttonLabel") || "Add as gift",
@@ -182,7 +209,7 @@
       } else if (eligibility.reason === "no_tier") {
         const amountToUnlock = eligibility.amountToUnlock || 0;
         const remainingText = amountToUnlock > 0
-          ? `Add ${G.formatPrice(amountToUnlock)} more to unlock gifts`
+          ? t("add_more", { amount: G.formatPrice(amountToUnlock) })
           : "";
         setButtonState({
           label: getLabel("disabledLabel") || "Add more to unlock gifts",
@@ -191,7 +218,7 @@
         });
       } else if (eligibility.reason === "over_budget") {
         const remainingText = eligibility.remainingBudget != null
-          ? `Remaining gift budget: ${G.formatPrice(eligibility.remainingBudget)}`
+          ? t("remaining_budget", { amount: G.formatPrice(eligibility.remainingBudget) })
           : "";
         setButtonState({
           label: getLabel("overBudgetLabel") || "Exceeds remaining gift budget",
@@ -248,7 +275,7 @@
       setButtonState({
         label: getLabel("buttonLabel") || "Add as gift",
         disabled: true,
-        statusText: "Gift added to cart!",
+        statusText: t("added"),
         statusType: "success",
       });
     } catch (e) {
