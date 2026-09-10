@@ -236,6 +236,7 @@
       }
 
       // ── Scrollable scale: each tier is a fixed-width column ──
+      const scaleMax = tiers[tiers.length - 1].minAmount;
       const STEP_WIDTH = 88; // px per tier column
       const totalWidth = tiers.length * STEP_WIDTH;
       const currentPct = Math.min(100, Math.max(0, (thresholdBase / scaleMax) * 100));
