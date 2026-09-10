@@ -374,7 +374,7 @@
   min-height: var(--buttons-min-height, 44px);
   padding: var(--buttons-padding-vertical, 10px) var(--buttons-padding-horizontal, 24px);
   border: var(--buttons-border-width, 1px) solid transparent;
-  border-radius: var(--buttons-radius, 6px);
+  border-radius: var(--buttons-radius-outset, 6px);
   font-size: var(--font-body-size, 15px);
   font-weight: var(--font-body-weight-bold, 600);
   font-family: var(--font-body-family, inherit);
