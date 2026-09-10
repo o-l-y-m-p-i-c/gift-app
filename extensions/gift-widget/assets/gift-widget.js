@@ -74,6 +74,28 @@
     return str;
   }
 
+  // ─── Scale auto-scroll ──────────────────────────────────────
+  function scrollScaleToCurrent(containers, tiers, thresholdBase, stepWidth) {
+    let currentIdx = 0;
+    for (let i = 0; i < tiers.length; i++) {
+      if (thresholdBase >= tiers[i].minAmount) {
+        currentIdx = i;
+      } else {
+        break;
+      }
+    }
+
+    containers.forEach((container) => {
+      const scrollEl = container.querySelector("[data-gift-scale-scroll]");
+      if (!scrollEl) return;
+      const targetX = currentIdx * stepWidth - scrollEl.clientWidth / 2 + stepWidth / 2;
+      scrollEl.scrollTo({
+        left: Math.max(0, targetX),
+        behavior: "smooth",
+      });
+    });
+  }
+
   // ─── Init ──────────────────────────────────────────────────
 
   async function init() {
@@ -334,24 +356,26 @@
     const totalGiftValue = G.getTotalGiftValue(cart);
     const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
 
-    // ── Full scale: 0 to max tier, showing all tier steps ──
+    // ── Scrollable scale: each tier is a fixed-width column ──
     const allTiers = G.getTiers();
     const scaleMax = allTiers.length > 0 ? allTiers[allTiers.length - 1].minAmount : 0;
     const currentPct = scaleMax > 0 ? Math.min(100, Math.max(0, (thresholdBase / scaleMax) * 100)) : 0;
+    const STEP_WIDTH = 96; // px per tier column
+    const totalWidth = allTiers.length * STEP_WIDTH;
 
-    const tierMarkers = allTiers.map((tier) => {
-      const pct = scaleMax > 0 ? (tier.minAmount / scaleMax) * 100 : 0;
+    const tierSteps = allTiers.map((tier, i) => {
       const isUnlocked = thresholdBase >= tier.minAmount;
       const isCurrent = activeTier && activeTier.id === tier.id;
-      const markerClass = isCurrent
-        ? "gift-widget__tier-marker--current"
+      const stepClass = isCurrent
+        ? "gift-widget__scale-step--current"
         : isUnlocked
-          ? "gift-widget__tier-marker--unlocked"
+          ? "gift-widget__scale-step--unlocked"
           : "";
       return `
-        <div class="gift-widget__tier-marker ${markerClass}" style="left:${pct}%">
-          <div class="gift-widget__tier-dot"></div>
-          <div class="gift-widget__tier-label">${G.formatPrice(tier.minAmount)}</div>
+        <div class="gift-widget__scale-step ${stepClass}" data-tier-idx="${i}">
+          <div class="gift-widget__scale-dot"></div>
+          <div class="gift-widget__scale-amount">${G.formatPrice(tier.minAmount)}</div>
+          <div class="gift-widget__scale-bonus">${G.formatPrice(tier.giftAmount)}</div>
         </div>
       `;
     }).join("");
@@ -390,11 +414,12 @@
           <div class="gift-widget__progress-info">
             ${infoText}
           </div>
-          <div class="gift-widget__scale">
-            <div class="gift-widget__scale-track">
-              <div class="gift-widget__scale-fill" style="width:${currentPct}%"></div>
-              <div class="gift-widget__scale-current" style="left:${currentPct}%"></div>
-              ${tierMarkers}
+          <div class="gift-widget__scale-scroll" data-gift-scale-scroll>
+            <div class="gift-widget__scale-track" style="min-width:${totalWidth}px">
+              <div class="gift-widget__scale-line">
+                <div class="gift-widget__scale-line-fill" style="width:${currentPct}%"></div>
+              </div>
+              <div class="gift-widget__scale-steps">${tierSteps}</div>
             </div>
           </div>
         </div>
@@ -480,6 +505,9 @@
 
       // Render to all containers
       containers.forEach((el) => { el.innerHTML = widgetHtml; });
+
+      // Auto-scroll scale to current position
+      scrollScaleToCurrent(containers, allTiers, thresholdBase, STEP_WIDTH);
 
       const excludeIds = new Set(
         cart.items

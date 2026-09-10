@@ -192,6 +192,29 @@
     mountContainer.innerHTML = "";
   }
 
+  // ─── Scale auto-scroll ──────────────────────────────────────
+  function scrollScaleToCurrent(container, tiers, thresholdBase, stepWidth) {
+    const scrollEl = container.querySelector("[data-gift-scale-scroll]");
+    if (!scrollEl) return;
+
+    // Find the index of the current or next tier
+    let currentIdx = 0;
+    for (let i = 0; i < tiers.length; i++) {
+      if (thresholdBase >= tiers[i].minAmount) {
+        currentIdx = i;
+      } else {
+        break;
+      }
+    }
+
+    // Center the current tier in the scroll viewport
+    const targetX = currentIdx * stepWidth - scrollEl.clientWidth / 2 + stepWidth / 2;
+    scrollEl.scrollTo({
+      left: Math.max(0, targetX),
+      behavior: "smooth",
+    });
+  }
+
   async function render() {
     if (isRendering) return;
     if (!ensureMounted()) return;
@@ -212,24 +235,25 @@
         return;
       }
 
-      // ── Full scale: 0 to max tier, showing all tier steps ──
-      const scaleMax = tiers[tiers.length - 1].minAmount;
+      // ── Scrollable scale: each tier is a fixed-width column ──
+      const STEP_WIDTH = 88; // px per tier column
+      const totalWidth = tiers.length * STEP_WIDTH;
       const currentPct = Math.min(100, Math.max(0, (thresholdBase / scaleMax) * 100));
 
-      // Build tier markers
-      const tierMarkers = tiers.map((tier, i) => {
-        const pct = (tier.minAmount / scaleMax) * 100;
+      // Build tier columns
+      const tierSteps = tiers.map((tier, i) => {
         const isUnlocked = thresholdBase >= tier.minAmount;
         const isCurrent = activeTier && activeTier.id === tier.id;
-        const markerClass = isCurrent
-          ? "gift-drawer-widget__tier-marker--current"
+        const stepClass = isCurrent
+          ? "gift-drawer-widget__scale-step--current"
           : isUnlocked
-            ? "gift-drawer-widget__tier-marker--unlocked"
+            ? "gift-drawer-widget__scale-step--unlocked"
             : "";
         return `
-          <div class="gift-drawer-widget__tier-marker ${markerClass}" style="left:${pct}%">
-            <div class="gift-drawer-widget__tier-dot"></div>
-            <div class="gift-drawer-widget__tier-label">${G.formatPrice(tier.minAmount)}</div>
+          <div class="gift-drawer-widget__scale-step ${stepClass}" data-tier-idx="${i}">
+            <div class="gift-drawer-widget__scale-dot"></div>
+            <div class="gift-drawer-widget__scale-amount">${G.formatPrice(tier.minAmount)}</div>
+            <div class="gift-drawer-widget__scale-bonus">${G.formatPrice(tier.giftAmount)}</div>
           </div>
         `;
       }).join("");
@@ -262,13 +286,14 @@
         `;
       }
 
-      // Full scale with all tier steps
+      // Scrollable scale
       html += `
-        <div class="gift-drawer-widget__scale">
-          <div class="gift-drawer-widget__scale-track">
-            <div class="gift-drawer-widget__scale-fill" style="width:${currentPct}%"></div>
-            <div class="gift-drawer-widget__scale-current" style="left:${currentPct}%"></div>
-            ${tierMarkers}
+        <div class="gift-drawer-widget__scale-scroll" data-gift-scale-scroll>
+          <div class="gift-drawer-widget__scale-track" style="min-width:${totalWidth}px">
+            <div class="gift-drawer-widget__scale-line">
+              <div class="gift-drawer-widget__scale-line-fill" style="width:${currentPct}%"></div>
+            </div>
+            <div class="gift-drawer-widget__scale-steps">${tierSteps}</div>
           </div>
         </div>
       `;
@@ -318,6 +343,9 @@
 
       html += "</div>";
       mountContainer.innerHTML = html;
+
+      // Auto-scroll scale to current position
+      scrollScaleToCurrent(mountContainer, tiers, thresholdBase, STEP_WIDTH);
     } catch (e) {
       console.error("[Gift Drawer] Render failed:", e);
       if (mountContainer) {
