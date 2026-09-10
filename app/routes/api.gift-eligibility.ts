@@ -76,6 +76,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   let variantPrice: number | null = null;
   let variantAvailable: boolean | null = null;
   let variantProductId: string | null = null;
+  let variantTags: string[] = [];
 
   try {
     const variantData: any = await adminGraphql(
@@ -89,6 +90,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               product {
                 id
                 status
+                tags
               }
             }
           }
@@ -102,6 +104,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       variantPrice = Math.round(Number(node.price || 0) * 100);
       variantAvailable = node.availableForSale && node.product?.status === "ACTIVE";
       variantProductId = node.product?.id || null;
+      variantTags = node.product?.tags || [];
     }
   } catch (e: any) {
     console.error("[gift-eligibility] Variant lookup failed:", e?.message || e);
@@ -119,10 +122,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  // Check if the product belongs to any excluded collection
+  // Check if the product belongs to any excluded collection or has excluded tags
   const appSettings = await getSettings(shop);
   const excludedCollections = appSettings.excludedCollections || [];
+  const excludedTags = appSettings.excludedTags || [];
 
+  // Check excluded tags first (no extra API call needed)
+  if (excludedTags.length > 0 && variantTags.length > 0) {
+    const hasExcludedTag = variantTags.some((tag) => excludedTags.includes(tag));
+    if (hasExcludedTag) {
+      return corsJson({
+        eligible: false,
+        reason: "excluded_tag",
+        variantPrice,
+      });
+    }
+  }
+
+  // Check excluded collections (requires product ID)
   if (excludedCollections.length > 0 && variantProductId) {
     try {
       const collectionCheck: any = await adminGraphql(

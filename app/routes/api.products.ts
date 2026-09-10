@@ -26,12 +26,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return corsJson({ products: [] });
   }
 
-  // Load excluded collections from settings
+  // Load excluded collections and tags from settings
   let excludedCollectionIds: string[] = [];
+  let excludedTags: string[] = [];
   if (shop) {
     try {
       const settings = await getSettings(shop);
       excludedCollectionIds = settings.excludedCollections || [];
+      excludedTags = settings.excludedTags || [];
     } catch (e) {
       console.warn("[api.products] Failed to load settings:", e);
     }
@@ -44,6 +46,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           id
           title
           status
+          tags
           featuredImage {
             url
           }
@@ -93,6 +96,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
         if (isExcluded) continue;
       }
 
+      // Check if product has any excluded tag
+      if (excludedTags.length > 0) {
+        const productTags = product.tags || [];
+        const hasExcludedTag = productTags.some((tag: string) =>
+          excludedTags.includes(tag),
+        );
+        if (hasExcludedTag) continue;
+      }
+
       for (const variant of product.variants?.nodes || []) {
         const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
 
@@ -115,7 +127,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
     }
 
-    console.log(`[api.products] maxPrice=${maxPrice}, excluded=${excludedCollectionIds.length} collections, found ${products.length} eligible variants`);
+    console.log(`[api.products] maxPrice=${maxPrice}, excluded=${excludedCollectionIds.length} collections, ${excludedTags.length} tags, found ${products.length} eligible variants`);
     return corsJson({ products });
   } catch (e) {
     console.error("[api.products] Error:", e);

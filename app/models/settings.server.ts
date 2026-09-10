@@ -21,6 +21,7 @@ export async function updateSettings(
     showRemovalNotification?: boolean;
     active?: boolean;
     excludedCollections?: string[];
+    excludedTags?: string[];
   },
 ) {
   return prisma.appSettings.upsert({
@@ -28,6 +29,54 @@ export async function updateSettings(
     create: { shopId, ...data },
     update: data,
   });
+}
+
+/**
+ * Fetch all product tags from Shopify Admin API for the exclusion picker.
+ * Returns string[] sorted alphabetically.
+ */
+export async function fetchProductTagsForPicker() {
+  const config = getAdminConfig();
+  if (!config) return [];
+
+  const allTags = new Set<string>();
+  let cursor: string | null = null;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const query = `
+      query ProductTags($first: Int!, $after: String) {
+        products(first: $first, after: $after) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            node {
+              tags
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const data: any = await adminGraphql(query, { first: 250, after: cursor });
+      const edges = data?.data?.products?.edges || [];
+      for (const edge of edges) {
+        for (const tag of edge.node?.tags || []) {
+          if (tag) allTags.add(tag);
+        }
+      }
+      hasNextPage = data?.data?.products?.pageInfo?.hasNextPage || false;
+      cursor = data?.data?.products?.pageInfo?.endCursor || null;
+    } catch (error) {
+      console.error("[settings] Failed to fetch product tags:", error);
+      break;
+    }
+  }
+
+  return Array.from(allTags).sort((a, b) => a.localeCompare(b));
 }
 
 /**
