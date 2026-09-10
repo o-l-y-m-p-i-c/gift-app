@@ -334,61 +334,68 @@
     const totalGiftValue = G.getTotalGiftValue(cart);
     const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
 
-    // ── Progress bar section ──
+    // ── Full scale: 0 to max tier, showing all tier steps ──
+    const allTiers = G.getTiers();
+    const scaleMax = allTiers.length > 0 ? allTiers[allTiers.length - 1].minAmount : 0;
+    const currentPct = scaleMax > 0 ? Math.min(100, Math.max(0, (thresholdBase / scaleMax) * 100)) : 0;
+
+    const tierMarkers = allTiers.map((tier) => {
+      const pct = scaleMax > 0 ? (tier.minAmount / scaleMax) * 100 : 0;
+      const isUnlocked = thresholdBase >= tier.minAmount;
+      const isCurrent = activeTier && activeTier.id === tier.id;
+      const markerClass = isCurrent
+        ? "gift-widget__tier-marker--current"
+        : isUnlocked
+          ? "gift-widget__tier-marker--unlocked"
+          : "";
+      return `
+        <div class="gift-widget__tier-marker ${markerClass}" style="left:${pct}%">
+          <div class="gift-widget__tier-dot"></div>
+          <div class="gift-widget__tier-label">${G.formatPrice(tier.minAmount)}</div>
+        </div>
+      `;
+    }).join("");
+
     let progressHtml = "";
 
-    if (activeTier && nextTier) {
-      const progressPct = Math.min(
-        100,
-        Math.max(0, (thresholdBase / nextTier.minAmount) * 100),
-      );
-      const amountToNext = nextTier.minAmount - thresholdBase;
+    if (allTiers.length > 0) {
+      let infoText = "";
+      if (activeTier && nextTier) {
+        const amountToNext = nextTier.minAmount - thresholdBase;
+        infoText = `
+          <span class="gift-widget__progress-current">
+            ${t("gift_budget", { amount: G.formatPrice(activeTier.giftAmount) })}
+          </span>
+          <span class="gift-widget__progress-next">
+            ${t("to_unlock_next", { amount: G.formatPrice(amountToNext), budget: G.formatPrice(nextTier.giftAmount) })}
+          </span>
+        `;
+      } else if (activeTier && !nextTier) {
+        infoText = `
+          <span class="gift-widget__progress-current">
+            ${t("gift_budget_max", { amount: G.formatPrice(activeTier.giftAmount) })}
+          </span>
+        `;
+      } else if (!activeTier) {
+        const amountToFirst = allTiers[0].minAmount - thresholdBase;
+        infoText = `
+          <span class="gift-widget__progress-current">
+            ${t("to_unlock_first", { amount: G.formatPrice(amountToFirst) })}
+          </span>
+        `;
+      }
 
       progressHtml = `
         <div class="gift-widget__progress">
           <div class="gift-widget__progress-info">
-            <span class="gift-widget__progress-current">
-              ${t("gift_budget", { amount: G.formatPrice(activeTier.giftAmount) })}
-            </span>
-            <span class="gift-widget__progress-next">
-              ${t("to_unlock_next", { amount: G.formatPrice(amountToNext), budget: G.formatPrice(nextTier.giftAmount) })}
-            </span>
+            ${infoText}
           </div>
-          <div class="gift-widget__progress-bar">
-            <div class="gift-widget__progress-fill" style="width:${progressPct}%"></div>
-          </div>
-        </div>
-      `;
-    } else if (activeTier && !nextTier) {
-      progressHtml = `
-        <div class="gift-widget__progress">
-          <div class="gift-widget__progress-info">
-            <span class="gift-widget__progress-current">
-              ${t("gift_budget_max", { amount: G.formatPrice(activeTier.giftAmount) })}
-            </span>
-          </div>
-          <div class="gift-widget__progress-bar">
-            <div class="gift-widget__progress-fill" style="width:100%"></div>
-          </div>
-        </div>
-      `;
-    } else if (!activeTier && G.getTiers().length > 0) {
-      const firstTier = G.getTiers()[0];
-      const progressPct = Math.min(
-        100,
-        Math.max(0, (thresholdBase / firstTier.minAmount) * 100),
-      );
-      const amountToFirst = firstTier.minAmount - thresholdBase;
-
-      progressHtml = `
-        <div class="gift-widget__progress">
-          <div class="gift-widget__progress-info">
-            <span class="gift-widget__progress-current">
-              ${t("to_unlock_first", { amount: G.formatPrice(amountToFirst) })}
-            </span>
-          </div>
-          <div class="gift-widget__progress-bar">
-            <div class="gift-widget__progress-fill" style="width:${progressPct}%"></div>
+          <div class="gift-widget__scale">
+            <div class="gift-widget__scale-track">
+              <div class="gift-widget__scale-fill" style="width:${currentPct}%"></div>
+              <div class="gift-widget__scale-current" style="left:${currentPct}%"></div>
+              ${tierMarkers}
+            </div>
           </div>
         </div>
       `;
@@ -459,7 +466,7 @@
       const widgetHtml = `
         <div class="gift-widget">
           <div class="gift-widget__header">
-            <span class="gift-widget__icon">🎁</span>
+            <span class="gift-widget__icon">💰</span>
             <div>
               <h3 class="gift-widget__title">${t("title")}</h3>
               <p class="gift-widget__subtitle">${budgetLabel}</p>
@@ -715,7 +722,7 @@
 
     const updatedCart = await G.fetchCart();
     const nonGiftCodes = (updatedCart.discount_codes || [])
-      .filter((discount) => discount.applicable !== false && discount.code && !discount.code.startsWith("GIFT-"))
+      .filter((discount) => discount.applicable !== false && discount.code && !discount.code.startsWith("BONUS-") && !discount.code.startsWith("GIFT-"))
       .map((discount) => discount.code);
     await fetch("/cart/update.js", {
       method: "POST",

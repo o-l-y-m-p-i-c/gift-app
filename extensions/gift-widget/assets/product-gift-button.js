@@ -202,7 +202,7 @@
           ? t("remaining_budget", { amount: G.formatPrice(eligibility.remainingBudget) })
           : "";
         setButtonState({
-          label: getLabel("buttonLabel") || "Add as gift",
+          label: getLabel("buttonLabel") || "Add as bonus",
           disabled: false,
           remainingText,
         });
@@ -212,7 +212,7 @@
           ? t("add_more", { amount: G.formatPrice(amountToUnlock) })
           : "";
         setButtonState({
-          label: getLabel("disabledLabel") || "Add more to unlock gifts",
+          label: getLabel("disabledLabel") || "Add more to unlock bonus",
           disabled: true,
           remainingText,
         });
@@ -221,30 +221,30 @@
           ? t("remaining_budget", { amount: G.formatPrice(eligibility.remainingBudget) })
           : "";
         setButtonState({
-          label: getLabel("overBudgetLabel") || "Exceeds remaining gift budget",
+          label: getLabel("overBudgetLabel") || "Exceeds remaining bonus balance",
           disabled: true,
           remainingText,
         });
       } else if (eligibility.reason === "excluded_collection" || eligibility.reason === "excluded_tag") {
         setButtonState({
-          label: getLabel("excludedLabel") || "Not eligible as gift",
+          label: getLabel("excludedLabel") || "Not eligible for bonus",
           disabled: true,
         });
       } else if (eligibility.reason === "busy") {
         setButtonState({
-          label: getLabel("loadingLabel") || "Adding gift…",
+          label: getLabel("loadingLabel") || "Adding…",
           disabled: true,
         });
       } else {
         setButtonState({
-          label: getLabel("disabledLabel") || "Add more to unlock gifts",
+          label: getLabel("disabledLabel") || "Add more to unlock bonus",
           disabled: true,
         });
       }
     } catch (e) {
-      console.error("[Product Gift Button] Eligibility check failed:", e);
+      console.error("[Product Bonus Button] Eligibility check failed:", e);
       setButtonState({
-        label: getLabel("disabledLabel") || "Add more to unlock gifts",
+        label: getLabel("disabledLabel") || "Add more to unlock bonus",
         disabled: true,
       });
     }
@@ -258,7 +258,7 @@
     let addSucceeded = false;
 
     setButtonState({
-      label: getLabel("loadingLabel") || "Adding gift…",
+      label: getLabel("loadingLabel") || "Adding…",
       disabled: true,
       showSpinner: true,
     });
@@ -272,23 +272,23 @@
 
       const result = await G.addGift(currentVariantId, eligibility.tierId);
       if (!result.ok) {
-        throw new Error(result.error || "Unable to add this gift.");
+        throw new Error(result.error || "Unable to add.");
       }
 
       addSucceeded = true;
       // Keep button disabled — updateButton() will re-enable if still eligible
       setButtonState({
-        label: getLabel("buttonLabel") || "Add as gift",
+        label: getLabel("buttonLabel") || "Add as bonus",
         disabled: true,
         statusText: t("added"),
         statusType: "success",
       });
     } catch (e) {
-      console.error("[Product Gift Button] Failed to add gift:", e);
+      console.error("[Product Bonus Button] Failed to add:", e);
       setButtonState({
-        label: getLabel("buttonLabel") || "Add as gift",
+        label: getLabel("buttonLabel") || "Add as bonus",
         disabled: false,
-        statusText: getLabel("errorLabel") || "Could not add free gift — try again",
+        statusText: getLabel("errorLabel") || "Could not add — try again",
         statusType: "error",
       });
       setTimeout(updateButton, 3000);

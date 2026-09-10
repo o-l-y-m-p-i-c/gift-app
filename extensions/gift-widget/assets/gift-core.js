@@ -423,10 +423,10 @@
       }
       giftAdded = true;
 
-      // 3. Apply discount code — replace old GIFT-* codes with the new one
+      // 3. Apply discount code — replace old BONUS-*/GIFT-* codes with the new one
       const cart = await fetchCart();
       const nonGiftCodes = (cart.discount_codes || [])
-        .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
+        .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
         .map((d) => d.code);
       const discountStr = [...nonGiftCodes, codeData.code].join(",");
       const updateResponse = await fetch("/cart/update.js", {
@@ -547,7 +547,7 @@
 
           if (codeResponse.ok && codeData.code) {
             const nonGiftCodes = (updatedCart.discount_codes || [])
-              .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
+              .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
               .map((d) => d.code);
             await fetch("/cart/update.js", {
               method: "POST",
@@ -557,9 +557,9 @@
           }
         }
       } else {
-        // No gifts left — remove all GIFT-* codes
+        // No gifts left — remove all BONUS-*/GIFT-* codes
         const nonGiftCodes = (updatedCart.discount_codes || [])
-          .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
+          .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
           .map((d) => d.code);
         await fetch("/cart/update.js", {
           method: "POST",

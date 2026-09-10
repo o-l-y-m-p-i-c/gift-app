@@ -212,58 +212,69 @@
         return;
       }
 
-      // ── Progress bar ──
-      let progressPct = 0;
-      let progressMax = 0;
+      // ── Full scale: 0 to max tier, showing all tier steps ──
+      const scaleMax = tiers[tiers.length - 1].minAmount;
+      const currentPct = Math.min(100, Math.max(0, (thresholdBase / scaleMax) * 100));
 
-      if (!activeTier) {
-        const firstTier = tiers[0];
-        progressMax = firstTier.minAmount;
-        progressPct = Math.min(100, Math.max(0, (thresholdBase / firstTier.minAmount) * 100));
-      } else if (nextTier) {
-        progressMax = nextTier.minAmount;
-        progressPct = Math.min(100, Math.max(0, (thresholdBase / nextTier.minAmount) * 100));
-      } else {
-        progressPct = 100;
-      }
+      // Build tier markers
+      const tierMarkers = tiers.map((tier, i) => {
+        const pct = (tier.minAmount / scaleMax) * 100;
+        const isUnlocked = thresholdBase >= tier.minAmount;
+        const isCurrent = activeTier && activeTier.id === tier.id;
+        const markerClass = isCurrent
+          ? "gift-drawer-widget__tier-marker--current"
+          : isUnlocked
+            ? "gift-drawer-widget__tier-marker--unlocked"
+            : "";
+        return `
+          <div class="gift-drawer-widget__tier-marker ${markerClass}" style="left:${pct}%">
+            <div class="gift-drawer-widget__tier-dot"></div>
+            <div class="gift-drawer-widget__tier-label">${G.formatPrice(tier.minAmount)}</div>
+          </div>
+        `;
+      }).join("");
 
       // ── Build HTML ──
       let html = '<div class="gift-drawer-widget__inner">';
 
-      // Progress section
+      // Summary text
       if (!activeTier) {
         const firstTier = tiers[0];
         const amountToFirst = Math.max(0, firstTier.minAmount - thresholdBase);
         const unlockLabel = formatLabel(
-          getSetting("labelUnlock", "Add [amount] more to unlock free gifts"),
+          getSetting("labelUnlock", "Add [amount] more to unlock bonus balance"),
           { amount: G.formatPrice(amountToFirst) },
         );
         html += `
           <div class="gift-drawer-widget__summary">
             <p class="gift-drawer-widget__text">${unlockLabel}</p>
           </div>
-          <div class="gift-drawer-widget__progress" role="progressbar"
-               aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progressPct)}">
-            <div class="gift-drawer-widget__progress-fill" style="width:${progressPct}%"></div>
-          </div>
         `;
       } else {
         const unlockedLabel = formatLabel(
-          getSetting("labelUnlocked", "You unlocked [budget] in free gifts"),
+          getSetting("labelUnlocked", "You unlocked [budget] in bonus balance"),
           { budget: G.formatPrice(activeTier.giftAmount) },
         );
-
         html += `
           <div class="gift-drawer-widget__summary">
             <p class="gift-drawer-widget__text">${unlockedLabel}</p>
           </div>
-          <div class="gift-drawer-widget__progress" role="progressbar"
-               aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progressPct)}">
-            <div class="gift-drawer-widget__progress-fill" style="width:${progressPct}%"></div>
-          </div>
         `;
+      }
 
-        // Budget usage
+      // Full scale with all tier steps
+      html += `
+        <div class="gift-drawer-widget__scale">
+          <div class="gift-drawer-widget__scale-track">
+            <div class="gift-drawer-widget__scale-fill" style="width:${currentPct}%"></div>
+            <div class="gift-drawer-widget__scale-current" style="left:${currentPct}%"></div>
+            ${tierMarkers}
+          </div>
+        </div>
+      `;
+
+      // Budget usage (only when a tier is active)
+      if (activeTier) {
         const showRemaining = getBoolSetting("showRemaining", true);
         if (totalGiftValue > 0 && remainingBudget > 0) {
           const usedLabel = formatLabel(
@@ -275,7 +286,7 @@
           );
           html += `<p class="gift-drawer-widget__budget">${usedLabel}</p>`;
         } else if (totalGiftValue > 0 && remainingBudget <= 0) {
-          const fullLabel = getSetting("labelFull", "Your gift budget is fully used");
+          const fullLabel = getSetting("labelFull", "Your bonus balance is fully used");
           html += `<p class="gift-drawer-widget__budget gift-drawer-widget__budget--full">${fullLabel}</p>`;
         } else if (showRemaining) {
           html += `<p class="gift-drawer-widget__budget">${t("remaining", { amount: G.formatPrice(remainingBudget) })}</p>`;
@@ -284,11 +295,11 @@
         // CTA
         let ctaLabel;
         if (remainingBudget > 0 && giftSelectionCount === 0) {
-          ctaLabel = getSetting("ctaChoose", "Choose your gifts");
+          ctaLabel = getSetting("ctaChoose", "Choose your products");
         } else if (remainingBudget > 0 && giftSelectionCount > 0) {
-          ctaLabel = getSetting("ctaMore", "Choose more gifts");
+          ctaLabel = getSetting("ctaMore", "Choose more products");
         } else {
-          ctaLabel = getSetting("ctaManage", "Manage gifts");
+          ctaLabel = getSetting("ctaManage", "Manage selections");
         }
 
         html += `

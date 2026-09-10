@@ -160,7 +160,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
   }
   const minPurchaseAmount = Math.max(tier.minAmount, Math.min(...qualifyingPrices));
 
-  const code = `GIFT-${randomBytes(12).toString("hex").toUpperCase()}`;
+  const code = `BONUS-${randomBytes(12).toString("hex").toUpperCase()}`;
   const now = new Date();
   const endsAt = new Date(now.getTime() + 30 * 60 * 1000);
 
@@ -187,7 +187,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
       `,
       {
         bxgyCodeDiscount: {
-          title: `Gift ${code}`,
+          title: `Bonus ${code}`,
           code,
           startsAt: now.toISOString(),
           endsAt: endsAt.toISOString(),
