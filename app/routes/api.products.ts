@@ -1,16 +1,19 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
 import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
+import { getSettings } from "~/models/settings.server";
 
 /**
  * Fetch eligible gift products for a given max price.
  * Uses the static Admin API access token — no sessions needed.
+ * Excludes products in collections marked as excluded in app settings.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
   const url = new URL(request.url);
+  const shop = url.searchParams.get("shop") || "";
   const maxPrice = parseInt(url.searchParams.get("maxPrice") || "0");
 
   if (maxPrice <= 0) {
@@ -23,6 +26,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return corsJson({ products: [] });
   }
 
+  // Load excluded collections from settings
+  let excludedCollectionIds: string[] = [];
+  if (shop) {
+    try {
+      const settings = await getSettings(shop);
+      excludedCollectionIds = settings.excludedCollections || [];
+    } catch (e) {
+      console.warn("[api.products] Failed to load settings:", e);
+    }
+  }
+
   const query = `#graphql
     query GetGiftProducts($first: Int!) {
       products(first: $first, query: "status:active") {
@@ -32,6 +46,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
           status
           featuredImage {
             url
+          }
+          collections(first: 250) {
+            edges {
+              node {
+                id
+              }
+            }
           }
           variants(first: 10) {
             nodes {
@@ -61,6 +82,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
     for (const product of allProducts) {
       if (product.status !== "ACTIVE") continue;
 
+      // Check if product is in any excluded collection
+      if (excludedCollectionIds.length > 0) {
+        const productCollectionIds = (product.collections?.edges || []).map(
+          (e: any) => e.node.id,
+        );
+        const isExcluded = productCollectionIds.some((id: string) =>
+          excludedCollectionIds.includes(id),
+        );
+        if (isExcluded) continue;
+      }
+
       for (const variant of product.variants?.nodes || []) {
         const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
 
@@ -83,7 +115,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
     }
 
-    console.log(`[api.products] maxPrice=${maxPrice}, found ${products.length} eligible variants`);
+    console.log(`[api.products] maxPrice=${maxPrice}, excluded=${excludedCollectionIds.length} collections, found ${products.length} eligible variants`);
     return corsJson({ products });
   } catch (e) {
     console.error("[api.products] Error:", e);

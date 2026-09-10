@@ -3,6 +3,7 @@ import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
 import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
 import { getActiveTiers } from "~/models/tier.server";
+import { getSettings } from "~/models/settings.server";
 
 /**
  * Gift eligibility endpoint for the product-page "Add as gift" button.
@@ -74,6 +75,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const variantGid = `gid://shopify/ProductVariant/${variantId}`;
   let variantPrice: number | null = null;
   let variantAvailable: boolean | null = null;
+  let variantProductId: string | null = null;
 
   try {
     const variantData: any = await adminGraphql(
@@ -85,6 +87,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               price
               availableForSale
               product {
+                id
                 status
               }
             }
@@ -98,6 +101,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (node) {
       variantPrice = Math.round(Number(node.price || 0) * 100);
       variantAvailable = node.availableForSale && node.product?.status === "ACTIVE";
+      variantProductId = node.product?.id || null;
     }
   } catch (e: any) {
     console.error("[gift-eligibility] Variant lookup failed:", e?.message || e);
@@ -113,6 +117,47 @@ export async function loader({ request }: LoaderFunctionArgs) {
       reason: "unavailable",
       variantPrice,
     });
+  }
+
+  // Check if the product belongs to any excluded collection
+  const appSettings = await getSettings(shop);
+  const excludedCollections = appSettings.excludedCollections || [];
+
+  if (excludedCollections.length > 0 && variantProductId) {
+    try {
+      const collectionCheck: any = await adminGraphql(
+        `#graphql
+          query ProductInExcludedCollections($productId: ID!, $collectionIds: [ID!]!) {
+            product(id: $productId) {
+              collections(first: 250) {
+                edges {
+                  node {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        `,
+        { productId: variantProductId, collectionIds: excludedCollections },
+      );
+
+      const productCollections = collectionCheck.data?.product?.collections?.edges || [];
+      const productCollectionIds = productCollections.map((e: any) => e.node.id);
+      const isInExcluded = productCollectionIds.some((id: string) =>
+        excludedCollections.includes(id),
+      );
+
+      if (isInExcluded) {
+        return corsJson({
+          eligible: false,
+          reason: "excluded_collection",
+          variantPrice,
+        });
+      }
+    } catch (e: any) {
+      console.warn("[gift-eligibility] Collection check failed:", e?.message || e);
+    }
   }
 
   // Look up prices for existing gift selections to calculate used budget

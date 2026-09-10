@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Page,
   Layout,
@@ -8,18 +8,30 @@ import {
   ChoiceList,
   Button,
   Box,
+  DataTable,
+  Badge,
+  TextField,
+  InlineStack,
 } from "@shopify/polaris";
 import { useLoaderData, useActionData, useSubmit } from "@remix-run/react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { getSettings, updateSettings } from "~/models/settings.server";
+import { getSettings, updateSettings, fetchCollectionsForPicker } from "~/models/settings.server";
 import { authenticate } from "~/shopify.server";
+
+type CollectionInfo = {
+  id: string;
+  title: string;
+  handle: string;
+  productsCount: number;
+};
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { session } = await authenticate.admin(request);
   const shopId = session.shop;
 
   const settings = await getSettings(shopId);
+  const collections = await fetchCollectionsForPicker();
 
   return json({
     settings: {
@@ -27,7 +39,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
       showLevelUpNotification: settings.showLevelUpNotification,
       showRemovalNotification: settings.showRemovalNotification,
       active: settings.active,
+      excludedCollections: settings.excludedCollections || [],
     },
+    collections,
     shopId,
   });
 }
@@ -38,18 +52,23 @@ export async function action({ request }: ActionFunctionArgs) {
   const useTotalAfterDiscounts = formData.get("useTotalAfterDiscounts") === "true";
   const showLevelUpNotification = formData.get("showLevelUpNotification") === "true";
   const showRemovalNotification = formData.get("showRemovalNotification") === "true";
+  const excludedCollectionsRaw = formData.get("excludedCollections") as string;
+  const excludedCollections = excludedCollectionsRaw
+    ? excludedCollectionsRaw.split(",").filter(Boolean)
+    : [];
 
   await updateSettings(shopId, {
     useTotalAfterDiscounts,
     showLevelUpNotification,
     showRemovalNotification,
+    excludedCollections,
   });
 
   return json({ success: true, message: "Settings saved" });
 }
 
 export default function SettingsPage() {
-  const { settings, shopId } = useLoaderData<typeof loader>();
+  const { settings, collections, shopId } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
 
@@ -63,14 +82,70 @@ export default function SettingsPage() {
     return selected;
   });
 
+  // Excluded collections state
+  const [excludedIds, setExcludedIds] = useState<string[]>(settings.excludedCollections);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Sync state when loader data changes (e.g. after save)
+  useEffect(() => {
+    setExcludedIds(settings.excludedCollections);
+  }, [settings.excludedCollections]);
+
+  const allCollections = (collections as CollectionInfo[]) || [];
+  const filteredCollections = allCollections.filter((c) =>
+    c.title.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  // Split into excluded and available
+  const excludedCollections = excludedIds
+    .map((id) => allCollections.find((c) => c.id === id))
+    .filter(Boolean) as CollectionInfo[];
+  const availableCollections = filteredCollections.filter(
+    (c) => !excludedIds.includes(c.id),
+  );
+
+  const handleAddExclusion = (collectionId: string) => {
+    setExcludedIds([...excludedIds, collectionId]);
+  };
+
+  const handleRemoveExclusion = (collectionId: string) => {
+    setExcludedIds(excludedIds.filter((id) => id !== collectionId));
+  };
+
   const handleSave = () => {
     const formData = new FormData();
     formData.append("shopId", shopId);
     formData.append("useTotalAfterDiscounts", String(thresholdMode[0] === "after"));
     formData.append("showLevelUpNotification", String(notifications.includes("levelUp")));
     formData.append("showRemovalNotification", String(notifications.includes("removal")));
+    formData.append("excludedCollections", excludedIds.join(","));
     submit(formData, { method: "post" });
   };
+
+  // DataTable rows for excluded collections
+  const excludedRows = excludedCollections.map((c) => [
+    c.title,
+    `${c.productsCount} products`,
+    <Button
+      size="slim"
+      tone="critical"
+      onClick={() => handleRemoveExclusion(c.id)}
+    >
+      Remove
+    </Button>,
+  ]);
+
+  // DataTable rows for available collections
+  const availableRows = availableCollections.map((c) => [
+    c.title,
+    `${c.productsCount} products`,
+    <Button
+      size="slim"
+      onClick={() => handleAddExclusion(c.id)}
+    >
+      Exclude
+    </Button>,
+  ]);
 
   return (
     <Page title="Settings" subtitle="Configure gift threshold behavior">
@@ -139,6 +214,62 @@ export default function SettingsPage() {
                   onChange={setNotifications}
                   allowMultiple
                 />
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h2">
+                  Excluded Collections ({excludedCollections.length})
+                </Text>
+                <Text as="p" tone="subdued">
+                  Products from these collections will not be shown as available gifts.
+                  Products already in the cart are also excluded automatically.
+                </Text>
+
+                {excludedCollections.length > 0 ? (
+                  <DataTable
+                    columnContentTypes={["text", "text", "numeric"]}
+                    headings={["Collection", "Products", ""]}
+                    rows={excludedRows}
+                  />
+                ) : (
+                  <Box paddingBlock="300">
+                    <Text as="p" tone="subdued">
+                      No collections excluded. All products are eligible as gifts.
+                    </Text>
+                  </Box>
+                )}
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h2">
+                  Available Collections ({availableCollections.length})
+                </Text>
+                <TextField
+                  label="Search collections"
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  autoComplete="off"
+                  placeholder="Type to filter..."
+                />
+                {availableCollections.length > 0 ? (
+                  <DataTable
+                    columnContentTypes={["text", "text", "numeric"]}
+                    headings={["Collection", "Products", ""]}
+                    rows={availableRows}
+                  />
+                ) : (
+                  <Box paddingBlock="300">
+                    <Text as="p" tone="subdued">
+                      {allCollections.length === 0
+                        ? "No collections found. Make sure the Admin API token is configured."
+                        : "All collections are excluded or no matches found."}
+                    </Text>
+                  </Box>
+                )}
               </BlockStack>
             </Card>
 
