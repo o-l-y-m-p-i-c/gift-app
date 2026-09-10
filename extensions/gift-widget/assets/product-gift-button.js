@@ -266,12 +266,54 @@
 
   // ─── Cart update listener ──────────────────────────────────
 
+  let cartUpdateDebounce = null;
+
+  function scheduleButtonRefresh(delay = 500) {
+    if (isAdding) return;
+    if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
+    cartUpdateDebounce = setTimeout(() => {
+      cartUpdateDebounce = null;
+      updateButton();
+    }, delay);
+  }
+
   function listenForCartUpdates() {
-    ["cart:updated", "cart:refresh", "cart:change"].forEach((eventName) => {
-      window.addEventListener(eventName, () => {
-        if (!isAdding) updateButton();
-      });
+    // 1. Listen for common cart event names across Dawn versions.
+    //    Dawn's pubsub uses "cart-update"; older themes use "cart:updated".
+    [
+      "cart:updated", "cart:refresh", "cart:change",
+      "cart-update", "quantity-update", "cart-error",
+    ].forEach((eventName) => {
+      window.addEventListener(eventName, () => scheduleButtonRefresh(300));
     });
+
+    // 2. Intercept fetch calls to cart endpoints.
+    //    Dawn's <product-form> submits via fetch('/cart/add') and may not
+    //    dispatch any of the events above, so we also watch the network layer.
+    const originalFetch = window.fetch;
+    window.fetch = async function (input, init) {
+      const url = typeof input === "string" ? input : input?.url || "";
+      const isCartMutation =
+        url.includes("/cart/add") ||
+        url.includes("/cart/change") ||
+        url.includes("/cart/update");
+
+      const response = await originalFetch.call(this, input, init);
+
+      if (isCartMutation && response.ok) {
+        // Re-check eligibility after the cart mutation completes.
+        // Use a short delay so Dawn's own section rendering finishes first.
+        scheduleButtonRefresh(500);
+      }
+
+      return response;
+    };
+
+    // 3. Listen for product form submit (fallback for non-fetch submissions)
+    const productForm = getProductForm();
+    if (productForm) {
+      productForm.addEventListener("submit", () => scheduleButtonRefresh(1000));
+    }
   }
 
   // ─── Init ──────────────────────────────────────────────────
