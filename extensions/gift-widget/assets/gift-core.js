@@ -575,15 +575,36 @@
     try {
       const bubble = document.getElementById("cart-icon-bubble");
       if (bubble) {
-        const res = await fetch("/cart?section_id=cart-icon-bubble", {
-          headers: { Accept: "text/html" },
-        });
-        if (res.ok) {
-          const text = await res.text();
-          const doc = new DOMParser().parseFromString(text, "text/html");
+        // Dawn uses the "sections" parameter which returns JSON with section HTML.
+        // Fall back to "section_id" which returns raw HTML.
+        let bubbleHtml = null;
+        try {
+          const res = await fetch("/cart?sections=cart-icon-bubble", {
+            headers: { Accept: "application/json" },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            bubbleHtml = data?.["cart-icon-bubble"] || null;
+          }
+        } catch {}
+
+        if (!bubbleHtml) {
+          const res = await fetch("/cart?section_id=cart-icon-bubble", {
+            headers: { Accept: "text/html" },
+          });
+          if (res.ok) {
+            bubbleHtml = await res.text();
+          }
+        }
+
+        if (bubbleHtml) {
+          const doc = new DOMParser().parseFromString(bubbleHtml, "text/html");
           const newBubble = doc.querySelector("#cart-icon-bubble");
           if (newBubble) {
             bubble.innerHTML = newBubble.innerHTML;
+          } else {
+            // Section HTML may be the inner content directly
+            bubble.innerHTML = bubbleHtml;
           }
         }
       }
@@ -595,15 +616,33 @@
     try {
       const drawerItems = document.querySelector("cart-drawer-items");
       if (drawerItems) {
-        const res = await fetch("/cart?section_id=cart-drawer", {
-          headers: { Accept: "text/html" },
-        });
-        if (res.ok) {
-          const text = await res.text();
-          const doc = new DOMParser().parseFromString(text, "text/html");
+        let drawerHtml = null;
+        try {
+          const res = await fetch("/cart?sections=cart-drawer", {
+            headers: { Accept: "application/json" },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            drawerHtml = data?.["cart-drawer"] || null;
+          }
+        } catch {}
+
+        if (!drawerHtml) {
+          const res = await fetch("/cart?section_id=cart-drawer", {
+            headers: { Accept: "text/html" },
+          });
+          if (res.ok) {
+            drawerHtml = await res.text();
+          }
+        }
+
+        if (drawerHtml) {
+          const doc = new DOMParser().parseFromString(drawerHtml, "text/html");
           const newDrawer = doc.querySelector("cart-drawer-items");
           if (newDrawer) {
             drawerItems.innerHTML = newDrawer.innerHTML;
+          } else {
+            drawerItems.innerHTML = drawerHtml;
           }
         }
       }
