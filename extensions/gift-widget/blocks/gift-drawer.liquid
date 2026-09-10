@@ -1,0 +1,108 @@
+{% comment %}
+  Gift Drawer Widget — Compact app block for the Dawn cart drawer.
+  Shows gift budget progress and a CTA to /cart when a gift tier is active.
+
+  Place via: Online Store → Customize → Cart drawer → Add block → Gift Drawer Widget
+  The block works on all templates because the cart drawer is global.
+{% endcomment %}
+
+<div data-gift-drawer-widget
+     data-shop="{{ request.host }}"
+     data-show-remaining="{{ block.settings.show_remaining | default: true }}"
+     data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
+     data-cta-choose="{{ block.settings.cta_choose | default: 'Choose your gifts' }}"
+     data-cta-more="{{ block.settings.cta_more | default: 'Choose more gifts' }}"
+     data-cta-manage="{{ block.settings.cta_manage | default: 'Manage gifts' }}"
+     data-label-unlock="{{ block.settings.label_unlock | default: 'Add [amount] more to unlock free gifts' }}"
+     data-label-unlocked="{{ block.settings.label_unlocked | default: 'You unlocked [budget] in free gifts' }}"
+     data-label-used="{{ block.settings.label_used | default: 'Used [amount] · Remaining [remaining]' }}"
+     data-label-full="{{ block.settings.label_full | default: 'Your gift budget is fully used' }}"
+></div>
+
+<script src="{{ 'gift-core.js' | asset_url }}" defer></script>
+<script src="{{ 'gift-drawer.js' | asset_url }}" defer></script>
+{{ 'gift-widget.css' | asset_url | stylesheet_tag }}
+
+{% schema %}
+{
+  "name": "Gift Drawer Widget",
+  "target": "section",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Compact gift progress widget for the cart drawer. Shows budget progress and a link to /cart for gift selection. Add this block to the Cart drawer section."
+    },
+    {
+      "type": "header",
+      "content": "Display"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_remaining",
+      "label": "Show remaining gift budget",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "product_preview",
+      "label": "Product preview",
+      "options": [
+        { "value": "disabled", "label": "Disabled (default)" },
+        { "value": "3", "label": "3 products" },
+        { "value": "4", "label": "4 products" }
+      ],
+      "default": "disabled",
+      "info": "Show a few eligible gift products in the drawer. Clicking a product navigates to /cart."
+    },
+    {
+      "type": "header",
+      "content": "Labels"
+    },
+    {
+      "type": "text",
+      "id": "cta_choose",
+      "label": "CTA — choose gifts",
+      "default": "Choose your gifts"
+    },
+    {
+      "type": "text",
+      "id": "cta_more",
+      "label": "CTA — choose more",
+      "default": "Choose more gifts"
+    },
+    {
+      "type": "text",
+      "id": "cta_manage",
+      "label": "CTA — manage gifts",
+      "default": "Manage gifts"
+    },
+    {
+      "type": "text",
+      "id": "label_unlock",
+      "label": "Label — below threshold",
+      "default": "Add [amount] more to unlock free gifts",
+      "info": "Use [amount] as a placeholder for the remaining amount."
+    },
+    {
+      "type": "text",
+      "id": "label_unlocked",
+      "label": "Label — budget unlocked",
+      "default": "You unlocked [budget] in free gifts",
+      "info": "Use [budget] as a placeholder for the gift budget."
+    },
+    {
+      "type": "text",
+      "id": "label_used",
+      "label": "Label — partial usage",
+      "default": "Used [amount] · Remaining [remaining]",
+      "info": "Use [amount] and [remaining] as placeholders."
+    },
+    {
+      "type": "text",
+      "id": "label_full",
+      "label": "Label — budget fully used",
+      "default": "Your gift budget is fully used"
+    }
+  ]
+}
+{% endschema %}
