@@ -273,6 +273,40 @@
       };
     }
 
+    // Local check passed — verify exclusions with backend
+    try {
+      const shopDomain = getShopDomain();
+      const giftSelections = getGiftSelections(state.cart)
+        .map((item) => item.variant_id)
+        .join(",");
+      const url = `${getAppUrl()}/gift-eligibility?shop=${encodeURIComponent(shopDomain)}&variantId=${variantIdStr}${giftSelections ? `&giftSelections=${giftSelections}` : ""}`;
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (res.ok) {
+        const backendResult = await res.json();
+        // Backend is authoritative for exclusions
+        if (!backendResult.eligible && backendResult.reason === "excluded_collection") {
+          return {
+            eligible: false,
+            reason: "excluded_collection",
+            variantPrice: backendResult.variantPrice ?? variantPrice,
+          };
+        }
+        if (!backendResult.eligible && backendResult.reason === "excluded_tag") {
+          return {
+            eligible: false,
+            reason: "excluded_tag",
+            variantPrice: backendResult.variantPrice ?? variantPrice,
+          };
+        }
+        // Use backend values if more accurate
+        if (backendResult.remainingBudget != null) {
+          return backendResult;
+        }
+      }
+    } catch (e) {
+      console.warn("[gift-core] Backend eligibility check failed, using local result:", e);
+    }
+
     return {
       eligible: true,
       reason: "ok",

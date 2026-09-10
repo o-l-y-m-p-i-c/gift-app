@@ -40,8 +40,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const query = `#graphql
-    query GetGiftProducts($first: Int!) {
-      products(first: $first, query: "status:active") {
+    query GetGiftProducts($first: Int!, $after: String) {
+      products(first: $first, after: $after, query: "status:active") {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           id
           title
@@ -72,62 +76,72 @@ export async function loader({ request }: LoaderFunctionArgs) {
   `;
 
   try {
-    const data: any = await adminGraphql(query, { first: 50 });
-
-    if (data.errors) {
-      console.error("[api.products] GraphQL errors:", JSON.stringify(data.errors));
-      return corsJson({ products: [] });
-    }
-
-    const allProducts = data.data?.products?.nodes || [];
-
     const products: any[] = [];
-    for (const product of allProducts) {
-      if (product.status !== "ACTIVE") continue;
+    let cursor: string | null = null;
+    let hasNextPage = true;
+    let pageCount = 0;
+    const maxPages = 20; // 20 × 250 = 5000 products max
 
-      // Check if product is in any excluded collection
-      if (excludedCollectionIds.length > 0) {
-        const productCollectionIds = (product.collections?.edges || []).map(
-          (e: any) => e.node.id,
-        );
-        const isExcluded = productCollectionIds.some((id: string) =>
-          excludedCollectionIds.includes(id),
-        );
-        if (isExcluded) continue;
+    while (hasNextPage && pageCount < maxPages) {
+      const data: any = await adminGraphql(query, { first: 250, after: cursor });
+
+      if (data.errors) {
+        console.error("[api.products] GraphQL errors:", JSON.stringify(data.errors));
+        break;
       }
 
-      // Check if product has any excluded tag
-      if (excludedTags.length > 0) {
-        const productTags = product.tags || [];
-        const hasExcludedTag = productTags.some((tag: string) =>
-          excludedTags.includes(tag),
-        );
-        if (hasExcludedTag) continue;
-      }
+      const allProducts = data.data?.products?.nodes || [];
+      hasNextPage = data.data?.products?.pageInfo?.hasNextPage || false;
+      cursor = data.data?.products?.pageInfo?.endCursor || null;
+      pageCount++;
 
-      for (const variant of product.variants?.nodes || []) {
-        const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
+      for (const product of allProducts) {
+        if (product.status !== "ACTIVE") continue;
 
-        if (
-          variant.availableForSale &&
-          priceCents > 0 &&
-          priceCents <= maxPrice
-        ) {
-          products.push({
-            productId: product.id,
-            variantId: variant.legacyResourceId.toString(),
-            title:
-              variant.title === "Default Title"
-                ? product.title
-                : `${product.title} — ${variant.title}`,
-            price: priceCents,
-            image: product.featuredImage?.url || "",
-          });
+        // Check if product is in any excluded collection
+        if (excludedCollectionIds.length > 0) {
+          const productCollectionIds = (product.collections?.edges || []).map(
+            (e: any) => e.node.id,
+          );
+          const isExcluded = productCollectionIds.some((id: string) =>
+            excludedCollectionIds.includes(id),
+          );
+          if (isExcluded) continue;
+        }
+
+        // Check if product has any excluded tag
+        if (excludedTags.length > 0) {
+          const productTags = product.tags || [];
+          const hasExcludedTag = productTags.some((tag: string) =>
+            excludedTags.includes(tag),
+          );
+          if (hasExcludedTag) continue;
+        }
+
+        for (const variant of product.variants?.nodes || []) {
+          const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
+
+          if (
+            variant.availableForSale &&
+            priceCents > 0 &&
+            priceCents <= maxPrice
+          ) {
+            products.push({
+              productId: product.id,
+              variantId: variant.legacyResourceId.toString(),
+              title:
+                variant.title === "Default Title"
+                  ? product.title
+                  : `${product.title} — ${variant.title}`,
+              price: priceCents,
+              image: product.featuredImage?.url || "",
+            });
+          }
         }
       }
     }
 
-    console.log(`[api.products] maxPrice=${maxPrice}, excluded=${excludedCollectionIds.length} collections, ${excludedTags.length} tags, found ${products.length} eligible variants`);
+    console.log(`[api.products] maxPrice=${maxPrice}, excluded=${excludedCollectionIds.length} collections, ${excludedTags.length} tags, scanned ${pageCount} pages, found ${products.length} eligible variants`);
     return corsJson({ products });
   } catch (e) {
     console.error("[api.products] Error:", e);
