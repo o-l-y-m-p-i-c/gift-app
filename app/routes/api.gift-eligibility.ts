@@ -1,9 +1,10 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { adminGraphql, hasAdminAccess } from "~/lib/admin-api.server";
+import { adminGraphql } from "~/lib/admin-api.server";
 import { getActiveTiers } from "~/models/tier.server";
 import { getSettings } from "~/models/settings.server";
+import { authenticate } from "~/shopify.server";
 
 /**
  * Gift eligibility endpoint for the product-page "Add as gift" button.
@@ -32,14 +33,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
+  const { session } = await authenticate.public.appProxy(request);
+  if (!session) {
+    return corsJson({ eligible: false, reason: "missing_session" }, { status: 401 });
+  }
+
   const url = new URL(request.url);
-  const shop = url.searchParams.get("shop");
+  const shop = session.shop;
   const variantId = url.searchParams.get("variantId");
   const giftSelectionsParam = url.searchParams.get("giftSelections") || "";
 
-  if (!shop) {
-    return corsJson({ eligible: false, reason: "missing_shop" }, { status: 400 });
-  }
   if (!variantId || !/^\d+$/.test(variantId)) {
     return corsJson({ eligible: false, reason: "invalid_variant" }, { status: 400 });
   }
@@ -64,14 +67,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const firstTier = sortedTiers[0];
 
   // Look up the variant price and availability via Admin API
-  const hasAccess = await hasAdminAccess(shop);
-  if (!hasAccess) {
-    return corsJson({
-      eligible: false,
-      reason: "server_not_configured",
-    }, { status: 500 });
-  }
-
   const variantGid = `gid://shopify/ProductVariant/${variantId}`;
   let variantPrice: number | null = null;
   let variantAvailable: boolean | null = null;

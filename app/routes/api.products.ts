@@ -1,7 +1,8 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { adminGraphql, hasAdminAccess } from "~/lib/admin-api.server";
+import { adminGraphql } from "~/lib/admin-api.server";
 import { getSettings } from "~/models/settings.server";
+import { authenticate } from "~/shopify.server";
 
 /**
  * Fetch eligible gift products for a given max price.
@@ -12,22 +13,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
+  const { session } = await authenticate.public.appProxy(request);
+  if (!session) {
+    return corsJson({ error: "App proxy session is unavailable.", products: [] }, { status: 401 });
+  }
+
   const url = new URL(request.url);
-  const shop = url.searchParams.get("shop") || "";
+  const shop = session.shop;
   const maxPrice = parseInt(url.searchParams.get("maxPrice") || "0");
 
   if (maxPrice <= 0) {
-    return corsJson({ products: [] });
-  }
-
-  if (!shop || !shop.includes(".myshopify.com")) {
-    console.error("[api.products] Missing or invalid shop parameter");
-    return corsJson({ products: [] });
-  }
-
-  const hasAccess = await hasAdminAccess(shop);
-  if (!hasAccess) {
-    console.error("[api.products] No OAuth session found for shop:", shop);
     return corsJson({ products: [] });
   }
 

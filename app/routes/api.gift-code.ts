@@ -2,28 +2,20 @@ import { randomBytes } from "node:crypto";
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { adminGraphql, hasAdminAccess } from "~/lib/admin-api.server";
+import { adminGraphql } from "~/lib/admin-api.server";
+import { authenticate } from "~/shopify.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
+  const { session } = await authenticate.public.appProxy(request);
+  if (!session) {
+    return corsJson({ error: "App proxy session is unavailable." }, { status: 401 });
+  }
+
   const body = await request.json().catch(() => null);
-  const shop: string = body?.shop || "";
-
-  if (!shop || !shop.includes(".myshopify.com")) {
-    return corsJson({ error: "Missing or invalid shop parameter." }, { status: 400 });
-  }
-
-  const hasAccess = await hasAdminAccess(shop);
-  if (!hasAccess) {
-    return corsJson(
-      { error: "App is not installed on this shop. Install it from the Shopify admin." },
-      { status: 500 },
-    );
-  }
-
-  return handleGiftCode(shop, body);
+  return handleGiftCode(session.shop, body);
 }
 
 /**

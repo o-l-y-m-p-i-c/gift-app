@@ -569,11 +569,10 @@
   // ─── Gift products fetch ───────────────────────────────────
 
   async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set()) {
-    const shopDomain = G.getShopDomain?.() || "";
     const appUrl = "/apps/gift-threshold";
     try {
       const res = await fetch(
-        `${appUrl}/products?shop=${shopDomain}&maxPrice=${maxPrice}`,
+        `${appUrl}/products?maxPrice=${maxPrice}`,
         { headers: { Accept: "application/json" } },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

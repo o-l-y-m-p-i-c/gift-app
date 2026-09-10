@@ -66,11 +66,10 @@
     if (configLoading) return configLoading;
 
     configLoading = (async () => {
-      const shopDomain = getShopDomain();
       const appUrl = getAppUrl();
       const [tiersData, settingsData] = await Promise.all([
-        fetchJson(`${appUrl}/tiers?shop=${shopDomain}`),
-        fetchJson(`${appUrl}/settings?shop=${shopDomain}`),
+        fetchJson(`${appUrl}/tiers`),
+        fetchJson(`${appUrl}/settings`),
       ]);
       tiers = (tiersData.tiers || []).sort((a, b) => a.minAmount - b.minAmount);
       settings = settingsData.settings || settings;
@@ -275,11 +274,10 @@
 
     // Local check passed — verify exclusions with backend
     try {
-      const shopDomain = getShopDomain();
       const giftSelections = getGiftSelections(state.cart)
         .map((item) => item.variant_id)
         .join(",");
-      const url = `${getAppUrl()}/gift-eligibility?shop=${encodeURIComponent(shopDomain)}&variantId=${variantIdStr}${giftSelections ? `&giftSelections=${giftSelections}` : ""}`;
+      const url = `${getAppUrl()}/gift-eligibility?variantId=${variantIdStr}${giftSelections ? `&giftSelections=${giftSelections}` : ""}`;
       const res = await fetch(url, { headers: { Accept: "application/json" } });
       if (res.ok) {
         const backendResult = await res.json();
@@ -369,7 +367,6 @@
     mutationLock = true;
 
     const variantIdStr = String(variantId);
-    const shopDomain = getShopDomain();
     let giftAdded = false;
     let addedSelectionId = null;
 
@@ -394,7 +391,6 @@
           giftVariantIds: allGiftVariantIds,
           tierId,
           qualifyingVariantIds,
-          shop: shopDomain,
         }),
       });
       const codeData = await codeResponse.json().catch(() => ({}));
@@ -532,7 +528,6 @@
         const qualifyingVariantIds = updatedCart.items
           .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
           .map((item) => String(item.variant_id));
-        const shopDomain = getShopDomain();
 
         // Determine current active tier for the code request
         const state = computeCartState(updatedCart);
@@ -546,7 +541,6 @@
               giftVariantIds: remainingGiftVariantIds,
               tierId,
               qualifyingVariantIds,
-              shop: shopDomain,
             }),
           });
           const codeData = await codeResponse.json().catch(() => ({}));
