@@ -6,18 +6,41 @@
   The block works on all templates because the cart drawer is global.
 {% endcomment %}
 
+{% assign cta_choose = block.settings.cta_choose %}
+{% if cta_choose == blank %}{% assign cta_choose = 'gift.drawer.cta_choose' | t %}{% endif %}
+{% assign cta_more = block.settings.cta_more %}
+{% if cta_more == blank %}{% assign cta_more = 'gift.drawer.cta_more' | t %}{% endif %}
+{% assign cta_manage = block.settings.cta_manage %}
+{% if cta_manage == blank %}{% assign cta_manage = 'gift.drawer.cta_manage' | t %}{% endif %}
+{% assign label_unlock = block.settings.label_unlock %}
+{% if label_unlock == blank %}{% assign label_unlock = 'gift.drawer.label_unlock' | t %}{% endif %}
+{% assign label_unlocked = block.settings.label_unlocked %}
+{% if label_unlocked == blank %}{% assign label_unlocked = 'gift.drawer.label_unlocked' | t %}{% endif %}
+{% assign label_used = block.settings.label_used %}
+{% if label_used == blank %}{% assign label_used = 'gift.drawer.label_used' | t %}{% endif %}
+{% assign label_full = block.settings.label_full %}
+{% if label_full == blank %}{% assign label_full = 'gift.drawer.label_full' | t %}{% endif %}
+
 <div data-gift-drawer-widget
      data-shop="{{ request.host }}"
      data-show-remaining="{{ block.settings.show_remaining | default: true }}"
      data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
-     data-cta-choose="{{ block.settings.cta_choose | default: 'Choose your gifts' }}"
-     data-cta-more="{{ block.settings.cta_more | default: 'Choose more gifts' }}"
-     data-cta-manage="{{ block.settings.cta_manage | default: 'Manage gifts' }}"
-     data-label-unlock="{{ block.settings.label_unlock | default: 'Add [amount] more to unlock free gifts' }}"
-     data-label-unlocked="{{ block.settings.label_unlocked | default: 'You unlocked [budget] in free gifts' }}"
-     data-label-used="{{ block.settings.label_used | default: 'Used [amount] · Remaining [remaining]' }}"
-     data-label-full="{{ block.settings.label_full | default: 'Your gift budget is fully used' }}"
+     data-cta-choose="{{ cta_choose }}"
+     data-cta-more="{{ cta_more }}"
+     data-cta-manage="{{ cta_manage }}"
+     data-label-unlock="{{ label_unlock }}"
+     data-label-unlocked="{{ label_unlocked }}"
+     data-label-used="{{ label_used }}"
+     data-label-full="{{ label_full }}"
 ></div>
+
+<script type="application/json" data-gift-drawer-translations>
+  {
+    "available_gifts": {{ 'gift.drawer.available_gifts' | t | json }},
+    "remaining": {{ 'gift.drawer.remaining' | t | json }},
+    "loading": {{ 'gift.loading' | t | json }}
+  }
+</script>
 
 <script src="{{ 'gift-core.js' | asset_url }}" defer></script>
 <script src="{{ 'gift-drawer.js' | asset_url }}" defer></script>

@@ -13,6 +13,32 @@
      data-cart-total="{{ cart.total_price }}"
 ></div>
 
+<script type="application/json" data-gift-translations>
+  {
+    "title": {{ 'gift.title' | t | json }},
+    "loading": {{ 'gift.loading' | t | json }},
+    "error_title": {{ 'gift.error_title' | t | json }},
+    "retry": {{ 'gift.retry' | t | json }},
+    "select": {{ 'gift.select' | t | json }},
+    "gift_budget": {{ 'gift.gift_budget' | t | json }},
+    "gift_budget_max": {{ 'gift.gift_budget_max' | t | json }},
+    "to_unlock_next": {{ 'gift.to_unlock_next' | t | json }},
+    "to_unlock_first": {{ 'gift.to_unlock_first' | t | json }},
+    "unlock_more": {{ 'gift.unlock_more' | t | json }},
+    "budget_full": {{ 'gift.budget_full' | t | json }},
+    "unable_load": {{ 'gift.unable_load' | t | json }},
+    "no_products": {{ 'gift.no_products' | t | json }},
+    "choose_up_to": {{ 'gift.choose_up_to' | t | json }},
+    "remaining": {{ 'gift.remaining' | t | json }},
+    "budget_label": {{ 'gift.budget_label' | t | json }},
+    "unlock_free": {{ 'gift.unlock_free' | t | json }},
+    "notif_tier_unlocked": {{ 'gift.notifications.tier_unlocked' | t | json }},
+    "notif_removed_discount": {{ 'gift.notifications.removed_discount' | t | json }},
+    "notif_removed_no_qualify": {{ 'gift.notifications.removed_no_qualify' | t | json }},
+    "notif_removed_choose_again": {{ 'gift.notifications.removed_choose_again' | t | json }}
+  }
+</script>
+
 <script src="{{ 'gift-core.js' | asset_url }}" defer></script>
 <script src="{{ 'gift-widget.js' | asset_url }}" defer></script>
 {{ 'gift-widget.css' | asset_url | stylesheet_tag }}

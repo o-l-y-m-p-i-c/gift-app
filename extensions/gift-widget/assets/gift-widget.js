@@ -47,6 +47,33 @@
   let isSelectingGift = false;
   let removingGiftKey = null;
 
+  // ─── Translations ──────────────────────────────────────────
+
+  let _translations = null;
+  function getTranslations() {
+    if (_translations) return _translations;
+    try {
+      const el = document.querySelector("[data-gift-translations]");
+      if (el) _translations = JSON.parse(el.textContent);
+    } catch (e) {
+      console.warn("[Gift Widget] Failed to parse translations:", e);
+    }
+    if (!_translations) _translations = {};
+    return _translations;
+  }
+
+  function t(key, vars) {
+    const tr = getTranslations();
+    let str = tr[key];
+    if (str == null) return key;
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        str = str.replace(new RegExp(`{{\\s*${k}\\s*}}`, "g"), v);
+      }
+    }
+    return str;
+  }
+
   // ─── Init ──────────────────────────────────────────────────
 
   async function init() {
@@ -175,7 +202,7 @@
     if (state.giftSelectionCount > 0 && state.freeGiftQuantity !== state.giftSelectionCount) {
       await removeAllGifts(cart);
       if (settings.showRemovalNotification) {
-        showNotification("Your gifts were removed because the full gift discount was not applied.", "warning");
+        showNotification(t("notif_removed_discount"), "warning");
       }
       await refreshCartSection();
       return;
@@ -185,7 +212,7 @@
     if (tierChanged) {
       if (lastActiveTierId !== null && activeTier && settings.showLevelUpNotification) {
         showNotification(
-          `🎉 New gift tier unlocked! Choose gifts up to ${G.formatPrice(activeTier.giftAmount)}`,
+          t("notif_tier_unlocked", { amount: G.formatPrice(activeTier.giftAmount) }),
           "success",
         );
       }
@@ -197,7 +224,7 @@
       await removeAllGifts(cart);
       await refreshCartSection();
       if (settings.showRemovalNotification) {
-        showNotification("Your cart no longer qualifies for a free gift.", "warning");
+        showNotification(t("notif_removed_no_qualify"), "warning");
       }
       cart = await G.fetchCart();
     }
@@ -207,7 +234,7 @@
       await removeAllGifts(cart);
       await refreshCartSection();
       if (settings.showRemovalNotification) {
-        showNotification("Your gifts were removed. Please choose again.", "info");
+        showNotification(t("notif_removed_choose_again"), "info");
       }
       cart = await G.fetchCart();
     }
@@ -221,7 +248,7 @@
     el.innerHTML = `
       <div class="gift-widget gift-widget--loading">
         <div class="gift-widget__spinner"></div>
-        <p class="gift-widget__subtitle">Loading gifts…</p>
+        <p class="gift-widget__subtitle">${t("loading")}</p>
       </div>
     `;
   }
@@ -232,11 +259,11 @@
         <div class="gift-widget__header">
           <span class="gift-widget__icon">⚠️</span>
           <div>
-            <h3 class="gift-widget__title">Something went wrong</h3>
+            <h3 class="gift-widget__title">${t("error_title")}</h3>
             <p class="gift-widget__subtitle">${message}</p>
           </div>
         </div>
-        <button type="button" class="gift-widget__retry" id="gift-widget-retry">Try again</button>
+        <button type="button" class="gift-widget__retry" id="gift-widget-retry">${t("retry")}</button>
       </div>
     `;
     const retryBtn = el.querySelector("#gift-widget-retry");
@@ -265,10 +292,10 @@
         <div class="gift-widget__progress">
           <div class="gift-widget__progress-info">
             <span class="gift-widget__progress-current">
-              ${G.formatPrice(activeTier.giftAmount)} gift budget
+              ${t("gift_budget", { amount: G.formatPrice(activeTier.giftAmount) })}
             </span>
             <span class="gift-widget__progress-next">
-              ${G.formatPrice(amountToNext)} to unlock ${G.formatPrice(nextTier.giftAmount)}
+              ${t("to_unlock_next", { amount: G.formatPrice(amountToNext), budget: G.formatPrice(nextTier.giftAmount) })}
             </span>
           </div>
           <div class="gift-widget__progress-bar">
@@ -281,7 +308,7 @@
         <div class="gift-widget__progress">
           <div class="gift-widget__progress-info">
             <span class="gift-widget__progress-current">
-              ${G.formatPrice(activeTier.giftAmount)} gift budget — max tier!
+              ${t("gift_budget_max", { amount: G.formatPrice(activeTier.giftAmount) })}
             </span>
           </div>
           <div class="gift-widget__progress-bar">
@@ -301,7 +328,7 @@
         <div class="gift-widget__progress">
           <div class="gift-widget__progress-info">
             <span class="gift-widget__progress-current">
-              ${G.formatPrice(amountToFirst)} to unlock your first gift
+              ${t("to_unlock_first", { amount: G.formatPrice(amountToFirst) })}
             </span>
           </div>
           <div class="gift-widget__progress-bar">
@@ -349,7 +376,7 @@
       selectionHtml = `
         <div class="gift-widget__no-tier">
           <p class="gift-widget__subtitle">
-            Add more items to your cart to unlock free gifts!
+            ${t("unlock_more")}
           </p>
         </div>
       `;
@@ -357,19 +384,19 @@
       selectionHtml = `
         <div class="gift-widget__budget-used">
           <p class="gift-widget__subtitle">
-            🎁 Your gift budget of ${G.formatPrice(activeTier.giftAmount)} is fully used!
+            ${t("budget_full", { amount: G.formatPrice(activeTier.giftAmount) })}
           </p>
         </div>
       `;
     } else {
       const budgetLabel = giftItems.length > 0
-        ? `${G.formatPrice(remainingBudget)} remaining`
-        : `Choose gifts up to ${G.formatPrice(activeTier.giftAmount)}`;
+        ? t("remaining", { amount: G.formatPrice(remainingBudget) })
+        : t("choose_up_to", { amount: G.formatPrice(activeTier.giftAmount) });
 
       selectionHtml = `
         <div class="gift-widget__selection-loading">
           <div class="gift-widget__spinner"></div>
-          <p class="gift-widget__subtitle">Loading gifts…</p>
+          <p class="gift-widget__subtitle">${t("loading")}</p>
         </div>
       `;
 
@@ -378,7 +405,7 @@
           <div class="gift-widget__header">
             <span class="gift-widget__icon">🎁</span>
             <div>
-              <h3 class="gift-widget__title">Free Gifts</h3>
+              <h3 class="gift-widget__title">${t("title")}</h3>
               <p class="gift-widget__subtitle">${budgetLabel}</p>
             </div>
           </div>
@@ -406,8 +433,8 @@
           const selectionEl = el.querySelector(".gift-widget__selection-loading");
           if (selectionEl) {
             selectionEl.innerHTML = `
-              <p class="gift-widget__subtitle">Unable to load gift products.</p>
-              <button type="button" class="gift-widget__retry">Try again</button>
+              <p class="gift-widget__subtitle">${t("unable_load")}</p>
+              <button type="button" class="gift-widget__retry">${t("retry")}</button>
             `;
             const retryBtn = selectionEl.querySelector(".gift-widget__retry");
             if (retryBtn) {
@@ -425,7 +452,7 @@
         selectionReplacementHtml = `
           <div class="gift-widget__no-products">
             <p class="gift-widget__subtitle">
-              No eligible products found under ${G.formatPrice(remainingBudget)}.
+              ${t("no_products", { amount: G.formatPrice(remainingBudget) })}
             </p>
           </div>
         `;
@@ -440,7 +467,7 @@
                 <p class="gift-widget__price">${G.formatPrice(p.price)}</p>
               </div>
               <button type="button" class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}', '${activeTier.id}')">
-                <span class="gift-widget__select-label">Select</span>
+                <span class="gift-widget__select-label">${t("select")}</span>
                 <span class="gift-widget__select-spinner" style="display:none"></span>
               </button>
             </div>
@@ -469,9 +496,9 @@
         <div class="gift-widget__header">
           <span class="gift-widget__icon">🎁</span>
           <div>
-            <h3 class="gift-widget__title">Free Gifts</h3>
+            <h3 class="gift-widget__title">${t("title")}</h3>
             <p class="gift-widget__subtitle">
-              ${activeTier ? `Budget: ${G.formatPrice(activeTier.giftAmount)}` : "Unlock free gifts"}
+              ${activeTier ? t("budget_label", { amount: G.formatPrice(activeTier.giftAmount) }) : t("unlock_free")}
             </p>
           </div>
         </div>

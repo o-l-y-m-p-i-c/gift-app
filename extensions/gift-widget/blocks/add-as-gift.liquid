@@ -6,6 +6,19 @@
   Place via: Online Store → Customize → Product template → Add block → Add as gift
 {% endcomment %}
 
+{% assign btn_label = block.settings.button_label %}
+{% if btn_label == blank %}{% assign btn_label = 'gift.product.button_label' | t %}{% endif %}
+{% assign disabled_label = block.settings.disabled_label %}
+{% if disabled_label == blank %}{% assign disabled_label = 'gift.product.disabled_label' | t %}{% endif %}
+{% assign over_budget_label = block.settings.over_budget_label %}
+{% if over_budget_label == blank %}{% assign over_budget_label = 'gift.product.over_budget_label' | t %}{% endif %}
+{% assign unavailable_label = block.settings.unavailable_label %}
+{% if unavailable_label == blank %}{% assign unavailable_label = 'gift.product.unavailable_label' | t %}{% endif %}
+{% assign loading_label = block.settings.loading_label %}
+{% if loading_label == blank %}{% assign loading_label = 'gift.product.loading_label' | t %}{% endif %}
+{% assign error_label = block.settings.error_label %}
+{% if error_label == blank %}{% assign error_label = 'gift.product.error_label' | t %}{% endif %}
+
 <div id="add-as-gift-container"
      class="add-as-gift {% if block.settings.full_width %}add-as-gift--full-width{% endif %}"
      data-shop="{{ request.host }}"
@@ -13,12 +26,12 @@
      data-variant-id="{{ product.selected_or_first_available_variant.id }}"
      data-variant-price="{{ product.selected_or_first_available_variant.price }}"
      data-variant-available="{{ product.selected_or_first_available_variant.available }}"
-     data-button-label="{{ block.settings.button_label | default: 'Add as gift' }}"
-     data-disabled-label="{{ block.settings.disabled_label | default: 'Add more to unlock gifts' }}"
-     data-over-budget-label="{{ block.settings.over_budget_label | default: 'Exceeds remaining gift budget' }}"
-     data-unavailable-label="{{ block.settings.unavailable_label | default: 'Unavailable as gift' }}"
-     data-loading-label="{{ block.settings.loading_label | default: 'Adding gift…' }}"
-     data-error-label="{{ block.settings.error_label | default: 'Could not add free gift — try again' }}"
+     data-button-label="{{ btn_label }}"
+     data-disabled-label="{{ disabled_label }}"
+     data-over-budget-label="{{ over_budget_label }}"
+     data-unavailable-label="{{ unavailable_label }}"
+     data-loading-label="{{ loading_label }}"
+     data-error-label="{{ error_label }}"
      data-show-remaining="{{ block.settings.show_remaining | default: true }}"
      style="text-align: {{ block.settings.alignment }};"
 >
@@ -27,7 +40,7 @@
           class="add-as-gift__button {% if block.settings.button_style == 'secondary' %}add-as-gift__button--secondary{% else %}add-as-gift__button--primary{% endif %} {% if block.settings.full_width %}add-as-gift__button--full{% endif %}"
           disabled
           aria-live="polite">
-    <span class="add-as-gift__label">{{ block.settings.button_label | default: 'Add as gift' }}</span>
+    <span class="add-as-gift__label">{{ btn_label }}</span>
     <span class="add-as-gift__spinner" style="display:none;"></span>
   </button>
 
@@ -40,6 +53,14 @@
 
 <script type="application/json" data-gift-product-variants>
   {{ product.variants | json }}
+</script>
+
+<script type="application/json" data-gift-product-translations>
+  {
+    "added": {{ 'gift.product.added' | t | json }},
+    "remaining_budget": {{ 'gift.product.remaining_budget' | t | json }},
+    "add_more": {{ 'gift.product.add_more' | t | json }}
+  }
 </script>
 
 <script src="{{ 'gift-core.js' | asset_url }}" defer></script>

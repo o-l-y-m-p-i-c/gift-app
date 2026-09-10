@@ -1,0 +1,49 @@
+{
+  "gift": {
+    "title": "Bezmaksas dāvanas",
+    "loading": "Ielādē dāvanas…",
+    "error_title": "Kaut kas nogājis greizi",
+    "retry": "Mēģināt vēlreiz",
+    "select": "Izvēlēties",
+    "gift_budget": "{{ amount }} dāvanu budžets",
+    "gift_budget_max": "{{ amount }} dāvanu budžets — maksimālais līmenis!",
+    "to_unlock_next": "{{ amount }} līdz nākamajam {{ budget }}",
+    "to_unlock_first": "{{ amount }} līdz pirmajai dāvanai",
+    "unlock_more": "Pievienojiet vairāk preču grozam, lai atbloķētu bezmaksas dāvanas!",
+    "budget_full": "🎁 Jūsu dāvanu budžets {{ amount }} ir pilnībā izmantots!",
+    "unable_load": "Nevar ielādēt dāvanu preces.",
+    "no_products": "Nav atrastas piemērotas dāvanas zem {{ amount }}.",
+    "choose_up_to": "Izvēlieties dāvanas līdz {{ amount }}",
+    "remaining": "{{ amount }} atlikušies",
+    "budget_label": "Budžets: {{ amount }}",
+    "unlock_free": "Atbloķēt bezmaksas dāvanas",
+    "drawer": {
+      "cta_choose": "Izvēlieties dāvanas",
+      "cta_more": "Izvēlieties vēl dāvanas",
+      "cta_manage": "Pārvaldīt dāvanas",
+      "label_unlock": "Pievienojiet vēl {{ amount }} lai atbloķētu bezmaksas dāvanas",
+      "label_unlocked": "Jūs atbloķējāt {{ budget }} bezmaksas dāvanām",
+      "label_used": "Izlietots {{ amount }} · Atlikušies {{ remaining }}",
+      "label_full": "Jūsu dāvanu budžets ir pilnībā izmantots",
+      "available_gifts": "Pieejamās dāvanas",
+      "remaining": "{{ amount }} atlikušies"
+    },
+    "product": {
+      "button_label": "Pievienot kā dāvanu",
+      "disabled_label": "Pievienojiet vairāk lai atbloķētu dāvanas",
+      "over_budget_label": "Pārsniedz atlikušo dāvanu budžetu",
+      "unavailable_label": "Nav pieejams kā dāvana",
+      "loading_label": "Pievieno dāvanu…",
+      "error_label": "Neizdevās pievienot bezmaksas dāvanu — mēģiniet vēlreiz",
+      "added": "Dāvana pievienota grozam!",
+      "remaining_budget": "Atlikušais dāvanu budžets: {{ amount }}",
+      "add_more": "Pievienojiet vēl {{ amount }} lai atbloķētu dāvanas"
+    },
+    "notifications": {
+      "tier_unlocked": "🎉 Jauns dāvanu līmenis atbloķēts! Izvēlieties dāvanas līdz {{ amount }}",
+      "removed_discount": "Jūsu dāvanas tika noņemtas, jo dāvanu atlaide netika piemērota.",
+      "removed_no_qualify": "Jūsu grozs vairs nekvalificējas bezmaksas dāvanai.",
+      "removed_choose_again": "Jūsu dāvanas tika noņemtas. Lūdzu izvēlieties vēlreiz."
+    }
+  }
+}
