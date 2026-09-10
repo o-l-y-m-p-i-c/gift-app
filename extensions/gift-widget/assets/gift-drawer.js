@@ -243,11 +243,10 @@
       // fill's coordinate origin matches the dots exactly (no edge offset).
       const usableStart = STEP_WIDTH / 2;
       const usableRange = totalWidth - STEP_WIDTH;
-      // Fill ends at the NEXT tier target (the goal you're working toward).
-      // When maxed out (no next tier), the fill reaches the last dot.
-      const lastIdx = tiers.length - 1;
-      const nextIdx = nextTier ? tiers.indexOf(nextTier) : lastIdx;
-      const fillPx = nextIdx * STEP_WIDTH; // width within the line (line starts at first dot)
+      // Fill ends at the ACTIVE (current) tier dot — the last unlocked marker.
+      // Below the first tier, the fill is empty.
+      const activeIdx = activeTier ? tiers.indexOf(activeTier) : -1;
+      const fillPx = Math.max(0, activeIdx * STEP_WIDTH);
 
       // Build tier columns
       const tierSteps = tiers.map((tier, i) => {
