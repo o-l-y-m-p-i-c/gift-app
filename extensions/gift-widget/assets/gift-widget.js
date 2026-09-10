@@ -14,8 +14,13 @@
  */
 
 (function () {
-  const container = document.getElementById("gift-widget-container");
-  if (!container) return;
+  // Support multiple containers: cart page + cart drawer can both have
+  // a gift-widget-container. We initialize once and render to all of them.
+  function getContainers() {
+    return document.querySelectorAll("#gift-widget-container");
+  }
+
+  if (getContainers().length === 0) return;
 
   if (window.giftWidgetInitialized) {
     if (window.giftWidget && typeof window.giftWidget._init === "function") {
@@ -45,16 +50,18 @@
   // ─── Init ──────────────────────────────────────────────────
 
   async function init() {
-    const el = document.getElementById("gift-widget-container");
-    if (!el) return;
+    const containers = getContainers();
+    if (containers.length === 0) return;
 
-    renderLoading(el);
+    containers.forEach((el) => renderLoading(el));
 
     try {
       await G.ensureConfig();
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch config:", e);
-      renderError(el, "Gift configuration is temporarily unavailable.", () => init());
+      containers.forEach((el) =>
+        renderError(el, "Gift configuration is temporarily unavailable.", () => init()),
+      );
       return;
     }
 
@@ -63,7 +70,9 @@
       cart = await G.fetchCart();
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch cart:", e);
-      renderError(el, "Unable to load your cart. Please refresh the page.", () => init());
+      containers.forEach((el) =>
+        renderError(el, "Unable to load your cart. Please refresh the page.", () => init()),
+      );
       return;
     }
 
@@ -235,8 +244,8 @@
   }
 
   async function renderWidget(cart, activeTier, nextTier, thresholdBase) {
-    const el = document.getElementById("gift-widget-container");
-    if (!el) return;
+    const containers = getContainers();
+    if (containers.length === 0) return;
 
     const giftItems = G.getGiftSelections(cart);
     const totalGiftValue = G.getTotalGiftValue(cart);
@@ -364,7 +373,7 @@
         </div>
       `;
 
-      el.innerHTML = `
+      const widgetHtml = `
         <div class="gift-widget">
           <div class="gift-widget__header">
             <span class="gift-widget__icon">🎁</span>
@@ -379,6 +388,9 @@
         </div>
       `;
 
+      // Render to all containers
+      containers.forEach((el) => { el.innerHTML = widgetHtml; });
+
       const excludeIds = new Set(
         cart.items
           .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
@@ -390,26 +402,27 @@
         products = await fetchGiftProducts(remainingBudget, excludeIds);
       } catch (e) {
         console.error("[Gift Widget] Failed to fetch products:", e);
-        const selectionEl = el.querySelector(".gift-widget__selection-loading");
-        if (selectionEl) {
-          selectionEl.innerHTML = `
-            <p class="gift-widget__subtitle">Unable to load gift products.</p>
-            <button type="button" class="gift-widget__retry" id="gift-widget-retry-products">Try again</button>
-          `;
-          const retryBtn = el.querySelector("#gift-widget-retry-products");
-          if (retryBtn) {
-            retryBtn.addEventListener("click", () => renderWidget(cart, activeTier, nextTier, thresholdBase));
+        containers.forEach((el) => {
+          const selectionEl = el.querySelector(".gift-widget__selection-loading");
+          if (selectionEl) {
+            selectionEl.innerHTML = `
+              <p class="gift-widget__subtitle">Unable to load gift products.</p>
+              <button type="button" class="gift-widget__retry">Try again</button>
+            `;
+            const retryBtn = selectionEl.querySelector(".gift-widget__retry");
+            if (retryBtn) {
+              retryBtn.addEventListener("click", () => renderWidget(cart, activeTier, nextTier, thresholdBase));
+            }
           }
-        }
+        });
         return;
       }
       giftProducts = products;
 
-      const selectionContainer = el.querySelector(".gift-widget__selection-loading");
-      if (!selectionContainer) return;
-
+      // Update selection section in all containers
+      let selectionReplacementHtml;
       if (products.length === 0) {
-        selectionContainer.outerHTML = `
+        selectionReplacementHtml = `
           <div class="gift-widget__no-products">
             <p class="gift-widget__subtitle">
               No eligible products found under ${G.formatPrice(remainingBudget)}.
@@ -435,16 +448,23 @@
           )
           .join("");
 
-        selectionContainer.outerHTML = `
+        selectionReplacementHtml = `
           <div class="gift-widget__carousel">${productCards}</div>
         `;
       }
 
+      containers.forEach((el) => {
+        const selectionContainer = el.querySelector(".gift-widget__selection-loading");
+        if (selectionContainer) {
+          selectionContainer.outerHTML = selectionReplacementHtml;
+        }
+      });
+
       return; // Already rendered
     }
 
-    // Render full widget (no product selection needed)
-    el.innerHTML = `
+    // Render full widget (no product selection needed) to all containers
+    const fullWidgetHtml = `
       <div class="gift-widget">
         <div class="gift-widget__header">
           <span class="gift-widget__icon">🎁</span>
@@ -460,6 +480,7 @@
         ${selectionHtml}
       </div>
     `;
+    containers.forEach((el) => { el.innerHTML = fullWidgetHtml; });
   }
 
   // ─── Gift products fetch ───────────────────────────────────
@@ -864,8 +885,9 @@
         if (observerDebounce) clearTimeout(observerDebounce);
         observerDebounce = setTimeout(async () => {
           observerDebounce = null;
-          const el = document.getElementById("gift-widget-container");
-          if (!el || el.children.length === 0) {
+          const containers = getContainers();
+          const anyEmpty = [...containers].some((el) => el.children.length === 0);
+          if (containers.length === 0 || anyEmpty) {
             if (window.giftWidget && typeof window.giftWidget._init === "function") {
               await window.giftWidget._init();
             }
@@ -882,13 +904,15 @@
   // ─── Utils ─────────────────────────────────────────────────
 
   function showNotification(message, type) {
-    const el = document.getElementById("gift-widget-container");
-    if (!el) return;
-    const notif = document.createElement("div");
-    notif.className = `gift-widget__notification gift-widget__notification--${type}`;
-    notif.textContent = message;
-    el.prepend(notif);
-    setTimeout(() => notif.remove(), 5000);
+    const containers = getContainers();
+    if (containers.length === 0) return;
+    containers.forEach((el) => {
+      const notif = document.createElement("div");
+      notif.className = `gift-widget__notification gift-widget__notification--${type}`;
+      notif.textContent = message;
+      el.prepend(notif);
+      setTimeout(() => notif.remove(), 5000);
+    });
   }
 
   // ─── Public API ────────────────────────────────────────────
