@@ -171,7 +171,9 @@
   function formatLabel(template, replacements) {
     let result = template;
     for (const [key, value] of Object.entries(replacements)) {
-      result = result.replace(`[${key}]`, value);
+      // Support both [key] (merchant-entered) and {{ key }} (locale file) formats
+      result = result.replace(new RegExp(`\\[${key}\\]`, "g"), value);
+      result = result.replace(new RegExp(`{{\\s*${key}\\s*}}`, "g"), value);
     }
     return result;
   }
