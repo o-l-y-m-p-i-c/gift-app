@@ -119,19 +119,19 @@
       console.warn("[Gift Widget] Event dispatch failed:", e);
     }
 
-    // Refresh cart page section
-    const cartItemsDiv = document.querySelector("[data-id^='template--'][data-id*='cart-items']");
-    const sectionId = cartItemsDiv?.getAttribute("data-id");
-    if (sectionId) {
+    // ─── Dawn cart page ───
+    const dawnCartItems = document.querySelector("[data-id^='template--'][data-id*='cart-items']");
+    const dawnSectionId = dawnCartItems?.getAttribute("data-id");
+    if (dawnSectionId) {
       try {
-        const res = await fetch(`${window.location.pathname}?section_id=${sectionId}`, {
+        const res = await fetch(`${window.location.pathname}?section_id=${dawnSectionId}`, {
           headers: { Accept: "text/html" },
         });
         if (res.ok) {
           const html = await res.text();
           const doc = new DOMParser().parseFromString(html, "text/html");
-          const newItems = doc.querySelector(`[data-id="${sectionId}"]`);
-          const oldItems = document.querySelector(`[data-id="${sectionId}"]`);
+          const newItems = doc.querySelector(`[data-id="${dawnSectionId}"]`);
+          const oldItems = document.querySelector(`[data-id="${dawnSectionId}"]`);
           if (newItems && oldItems) {
             oldItems.innerHTML = newItems.innerHTML;
             oldItems.querySelectorAll("script").forEach((oldScript) => {
@@ -145,22 +145,78 @@
           }
         }
       } catch (e) {
-        console.warn("[Gift Widget] Section fetch failed:", e);
+        console.warn("[Gift Widget] Dawn section fetch failed:", e);
       }
     }
 
-    // Refresh cart drawer
-    const drawer = document.querySelector("cart-drawer-items");
-    if (drawer) {
+    // ─── Prestige cart page ───
+    const prestigeCartForm = document.querySelector("form.cart-page");
+    if (prestigeCartForm) {
+      try {
+        const res = await fetch(`${window.location.pathname}?section_id=main-cart`, {
+          headers: { Accept: "text/html" },
+        });
+        if (res.ok) {
+          const html = await res.text();
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const newForm = doc.querySelector("form.cart-page");
+          if (newForm && prestigeCartForm) {
+            prestigeCartForm.innerHTML = newForm.innerHTML;
+            // Re-attach any scripts
+            prestigeCartForm.querySelectorAll("script").forEach((oldScript) => {
+              const newScript = document.createElement("script");
+              for (const attr of oldScript.attributes || []) {
+                newScript.setAttribute(attr.name, attr.value);
+              }
+              newScript.textContent = oldScript.textContent;
+              oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[Gift Widget] Prestige cart section fetch failed:", e);
+      }
+    }
+
+    // ─── Dawn cart drawer ───
+    const dawnDrawer = document.querySelector("cart-drawer-items");
+    if (dawnDrawer) {
       try {
         const res = await fetch(`/cart?section_id=cart-drawer`, { headers: { Accept: "text/html" } });
         if (res.ok) {
           const doc = new DOMParser().parseFromString(await res.text(), "text/html");
           const newDrawer = doc.querySelector("cart-drawer-items");
-          if (newDrawer) drawer.innerHTML = newDrawer.innerHTML;
+          if (newDrawer) dawnDrawer.innerHTML = newDrawer.innerHTML;
         }
       } catch (e) {
-        console.warn("[Gift Widget] Cart drawer refresh failed:", e);
+        console.warn("[Gift Widget] Dawn cart drawer refresh failed:", e);
+      }
+    }
+
+    // ─── Prestige cart drawer ───
+    const prestigeDrawer = document.querySelector("cart-drawer");
+    if (prestigeDrawer) {
+      try {
+        const res = await fetch(`/cart?section_id=cart-drawer`, { headers: { Accept: "text/html" } });
+        if (res.ok) {
+          const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+          const newDrawer = doc.querySelector("cart-drawer");
+          if (newDrawer && prestigeDrawer) {
+            // Preserve our gift widget if it's already mounted inside the drawer
+            const giftWidget = prestigeDrawer.querySelector("[data-gift-drawer-mounted]");
+            prestigeDrawer.innerHTML = newDrawer.innerHTML;
+            // Re-mount gift widget if it existed
+            if (giftWidget) {
+              const newItemsContainer = prestigeDrawer.querySelector(".cart-drawer__items");
+              const newFooter = prestigeDrawer.querySelector('[slot="footer"]');
+              if (newFooter && giftWidget.parentNode === newFooter.parentNode) {
+                newFooter.before(giftWidget);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[Gift Widget] Prestige cart drawer refresh failed:", e);
       }
     }
 
@@ -851,13 +907,19 @@
     const giftQtyByKey = new Map(gifts.map((g) => [g.key, g.quantity]));
 
     const cartItems = document.querySelectorAll(
+      // Dawn selectors
       "[data-id^='template--'][data-id*='cart-items'] .cart-item, " +
       "cart-drawer-items .cart-item, " +
-      "form[action='/cart'] .cart-item"
+      "form[action='/cart'] .cart-item, " +
+      // Prestige selectors
+      "form.cart-page line-item, " +
+      "cart-drawer line-item"
     );
 
     cartItems.forEach((item) => {
-      const removeLink = item.querySelector('cart-remove-button a[href*="/cart/change"]');
+      // Dawn: cart-remove-button a[href*="/cart/change"]
+      // Prestige: a[href*="/cart/change"] (line-item.url_to_remove)
+      const removeLink = item.querySelector('a[href*="/cart/change"], cart-remove-button a[href*="/cart/change"]');
       let key = item.getAttribute("data-key") || item.getAttribute("data-line-key");
       if (!key && removeLink) {
         try {
@@ -918,10 +980,14 @@
     });
 
     const cartItemsContainer =
+      // Dawn selectors
       document.querySelector("[data-id^='template--'][data-id*='cart-items']") ||
       document.querySelector("#cart") ||
-      document.querySelector("form[action='/cart']") ||
-      document.querySelector("cart-drawer-items");
+      document.querySelector("cart-drawer-items") ||
+      // Prestige selectors
+      document.querySelector("form.cart-page") ||
+      document.querySelector("cart-drawer .cart-drawer__items") ||
+      document.querySelector("cart-drawer");
 
     if (cartItemsContainer && typeof MutationObserver !== "undefined") {
       let observerDebounce = null;

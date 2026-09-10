@@ -82,7 +82,10 @@
   }
 
   function findDrawerFooter() {
-    return document.querySelector("cart-drawer .drawer__footer");
+    // Dawn: cart-drawer .drawer__footer
+    // Prestige: cart-drawer [slot="footer"]
+    return document.querySelector("cart-drawer .drawer__footer") ||
+           document.querySelector('cart-drawer [slot="footer"]');
   }
 
   function ensureMounted() {
