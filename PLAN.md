@@ -726,3 +726,350 @@ The backend must enforce these rules; Liquid and JavaScript filtering alone are 
 - Product-page and cart-page gift calculations produce identical results.
 - Existing non-gift discount codes are preserved where Shopify combination rules allow them.
 - Failed discount application leaves no paid gift line in the cart.
+
+---
+
+## 12. Cart Drawer — компактный Gift Budget Widget
+
+### Цель
+
+Добавить в Dawn cart drawer компактный блок, который:
+
+- всегда показывает прогресс до первого или следующего gift tier;
+- при наличии активного gift budget показывает общий, использованный и оставшийся бюджет;
+- даёт явный переход на `/cart`, где пользователь может выбрать или изменить подарки;
+- синхронизируется после добавления, удаления и изменения количества товаров и подарков;
+- не перегружает drawer полной версией cart-page виджета;
+- опционально показывает до 3–4 доступных подарков.
+
+### Наблюдение по текущей разметке
+
+В текущем Dawn drawer структура выглядит так:
+
+```text
+cart-drawer
+└── .drawer__inner
+    ├── .drawer__header
+    ├── cart-drawer-items
+    └── .drawer__footer
+        ├── subtotal
+        └── checkout button
+```
+
+Компактный gift widget нужно вставлять перед `.drawer__footer` или первым элементом внутри footer перед subtotal. Предпочтительный вариант — перед `.drawer__footer`: блок остаётся визуально связан с корзиной, но не вмешивается в форму `#CartDrawer-Form` и checkout submit.
+
+Текущий `gift-widget.liquid` ограничен `templates: ["cart"]`. Drawer присутствует на product, collection и других storefront-страницах, поэтому cart-page app block не является надёжной точкой подключения drawer UI.
+
+### Рекомендуемая архитектура
+
+Создать отдельный Theme App Embed, включаемый один раз глобально:
+
+```text
+extensions/gift-widget/
+├── blocks/
+│   ├── gift-widget.liquid          # полная версия на /cart
+│   ├── add-as-gift.liquid          # кнопка на product page
+│   └── gift-drawer-embed.liquid    # глобальный app embed
+└── assets/
+    ├── gift-core.js                # общая cart/tier/budget логика
+    ├── gift-widget.js              # полная версия /cart
+    ├── gift-drawer.js              # компактный drawer UI
+    └── gift-widget.css             # общие и drawer стили
+```
+
+`gift-drawer-embed.liquid`:
+
+- использует `target: "body"`;
+- загружает `gift-core.js`, `gift-drawer.js` и CSS;
+- имеет настройки отображения и текста;
+- не содержит статический drawer HTML: `gift-drawer.js` создаёт контейнер только если на странице найден `cart-drawer`;
+- merchant включает embed через `Online Store → Customize → App embeds → Gift Drawer`.
+
+### Точка монтирования
+
+`gift-drawer.js` должен:
+
+1. Найти `cart-drawer .drawer__inner`.
+2. Найти прямого потомка `.drawer__footer`.
+3. Создать контейнер с уникальным атрибутом, например:
+
+```html
+<div data-gift-drawer-widget></div>
+```
+
+4. Вставить его через `drawerFooter.before(container)`.
+5. Не создавать второй контейнер, если `[data-gift-drawer-widget]` уже существует.
+6. После Dawn section replacement повторно найти drawer и при необходимости смонтировать контейнер заново.
+
+Не использовать повторяющийся `id="gift-widget-container"`: cart page и drawer могут существовать одновременно, а ID обязан быть уникальным. Для контекстов использовать отдельные data-атрибуты:
+
+```text
+[data-gift-cart-widget]
+[data-gift-drawer-widget]
+[data-gift-product-button]
+```
+
+### Состояния drawer-виджета
+
+#### 1. Корзина ниже первого tier
+
+Показывать:
+
+- текст `Add €X more to unlock free gifts`;
+- progress bar от `0` до `firstTier.minAmount`;
+- без списка подарков;
+- без gift-specific CTA, пока gift budget не активен.
+
+```text
+Add €18.00 more to unlock free gifts
+[██████████████░░░░░░] 82%
+```
+
+#### 2. Tier активен, gift budget не использован
+
+Показывать:
+
+- `You unlocked €Y in free gifts`;
+- прогресс до следующего tier или 100% для максимального tier;
+- `€Y remaining`;
+- primary CTA `Choose your gifts` → `/cart`.
+
+#### 3. Tier активен, budget использован частично
+
+Показывать:
+
+- `Gift budget: €Y`;
+- `Used €A · Remaining €B`;
+- progress до следующего tier;
+- CTA `Choose more gifts` → `/cart`, если `remainingBudget > 0`;
+- CTA `Manage gifts` → `/cart`, если подарок уже выбран.
+
+#### 4. Gift budget полностью использован
+
+Показывать:
+
+- `Your gift budget is fully used`;
+- выбранную сумму подарков;
+- CTA `Manage gifts` → `/cart`;
+- не показывать новые рекомендации.
+
+#### 5. Tier изменился после cart mutation
+
+- Пересчитать `thresholdBase`, `activeTier`, `nextTier`, `totalGiftValue` и `remainingBudget` через `giftApp.computeCartState(cart)`.
+- Если qualification потеряна, применить существующую логику удаления/инвалидации подарков до финального render.
+- Не показывать устаревший бюджет во время async mutation: отображать компактный loading state.
+
+### Progress bar
+
+Один progress bar должен показывать qualification progress, а не расход gift budget:
+
+```text
+если activeTier отсутствует:
+  progress = thresholdBase / firstTier.minAmount
+
+если activeTier существует и nextTier существует:
+  progress = thresholdBase / nextTier.minAmount
+
+если activeTier существует и nextTier отсутствует:
+  progress = 100%
+```
+
+Gift budget usage выводить отдельно текстом. При необходимости позже можно добавить второй тонкий indicator, но в первой версии это не требуется.
+
+Progress bar должен:
+
+- иметь `role="progressbar"`;
+- иметь `aria-valuemin="0"`, `aria-valuemax` и `aria-valuenow`;
+- использовать CSS variables темы для background, foreground, radius и typography;
+- корректно работать на узкой ширине drawer.
+
+### Переход в корзину
+
+Когда `activeTier` существует, drawer обязательно показывает ссылку на `/cart`:
+
+```html
+<a href="/cart" class="button button--full-width">
+  Choose your gifts
+</a>
+```
+
+Правила текста:
+
+```text
+remainingBudget > 0 и подарков нет  → Choose your gifts
+remainingBudget > 0 и подарки есть  → Choose more gifts
+remainingBudget = 0                 → Manage gifts
+```
+
+Использовать обычную ссылку, а не checkout submit button. Это исключает конфликт с `#CartDrawer-Checkout` и позволяет Dawn выполнить обычную навигацию на cart page.
+
+### Опциональные 3–4 подарка
+
+Первая версия по умолчанию не должна загружать продукты в drawer: progress + budget + CTA дают более быстрый и предсказуемый UX.
+
+Добавить настройку embed:
+
+```text
+Product preview:
+- Disabled (default)
+- 3 products
+- 4 products
+```
+
+Если preview включён:
+
+- использовать общий источник eligible products;
+- фильтровать по `price <= remainingBudget`;
+- исключать обычные cart variants по существующим правилам;
+- показывать только изображение, короткое название и цену;
+- клик по карточке ведёт на `/cart`, а не запускает сложный BXGY flow прямо внутри drawer в первой версии;
+- не называть товары «popular», пока нет реальной popularity-метрики или merchant-defined ordering;
+- использовать формулировку `Available gifts` или `Gift suggestions`.
+
+Будущее улучшение: добавить в admin merchant-curated featured gifts или popularity score по `GiftHistory`, после чего drawer может честно показывать популярные товары.
+
+### Настройки App Embed
+
+Предусмотреть:
+
+```text
+Enable drawer widget: boolean
+Show below first tier: boolean (default true)
+Show product preview: disabled / 3 / 4
+Show remaining budget: boolean (default true)
+CTA label — choose gifts
+CTA label — choose more
+CTA label — manage gifts
+Progress color override: optional
+Spacing: compact / comfortable
+```
+
+По умолчанию использовать стили Dawn:
+
+- `var(--font-body-family)`;
+- `var(--color-foreground)`;
+- `var(--color-background)`;
+- `var(--color-button)`;
+- `var(--color-button-text)`;
+- `var(--buttons-radius-outset)`;
+- существующие классы `button` и `button--full-width`, где они доступны.
+
+### Синхронизация с Dawn
+
+Drawer HTML заменяется после cart section rendering, поэтому drawer widget должен переживать DOM replacement.
+
+Слушать:
+
+```text
+window.giftApp.onCartUpdate(...)
+document: cart:updated
+document: cart:change
+document: cart:refresh
+Dawn cart-update / quantity-update events, если доступны
+```
+
+Дополнительно использовать один scoped `MutationObserver` на `cart-drawer` или его родителе:
+
+- только для повторного mount после замены section HTML;
+- debounce 100–300 ms;
+- не выполнять новый cart fetch на каждую DOM mutation;
+- отключать старый observer при повторной инициализации;
+- не перехватывать глобальный `window.fetch` ещё раз.
+
+После add/remove/change:
+
+1. Дождаться завершения cart mutation.
+2. Получить актуальный `/cart.js`.
+3. Вычислить state через `gift-core.js`.
+4. Обновить drawer section и cart-icon-bubble существующим механизмом.
+5. Повторно mount/render `[data-gift-drawer-widget]`.
+
+### Разделение полной и компактной версии
+
+Не использовать один и тот же большой renderer для `/cart` и drawer.
+
+```text
+gift-widget.js:
+- полный progress/header;
+- выбранные подарки;
+- полная gift carousel;
+- add/remove gift actions.
+
+gift-drawer.js:
+- компактный progress;
+- budget summary;
+- optional 3–4 previews;
+- ссылка на /cart;
+- без самостоятельного discount-code workflow.
+```
+
+Обе версии обязаны использовать только расчёты из `gift-core.js`, чтобы tier и remaining budget не расходились.
+
+### CSS и responsive behavior
+
+Добавить отдельные классы:
+
+```text
+.gift-drawer-widget
+.gift-drawer-widget__summary
+.gift-drawer-widget__progress
+.gift-drawer-widget__progress-fill
+.gift-drawer-widget__budget
+.gift-drawer-widget__products
+.gift-drawer-widget__cta
+```
+
+Требования:
+
+- не увеличивать drawer ширину;
+- не создавать горизонтальный scroll;
+- max 3–4 компактных карточки в grid или horizontal scroll;
+- CTA `width: 100%`;
+- текст не должен перекрывать subtotal/checkout;
+- widget должен помещаться между cart items и footer;
+- при малой высоте viewport cart items остаются скроллируемыми, а checkout доступен;
+- использовать theme variables и `--buttons-radius-outset`.
+
+### Implementation checklist
+
+```text
+□ Создать gift-drawer-embed.liquid с target: body
+□ Добавить настройки embed
+□ Создать gift-drawer.js
+□ Добавить безопасный mount перед .drawer__footer
+□ Заменить повторяющиеся widget IDs на context data attributes
+□ Использовать giftApp.computeCartState() для всех расчётов
+□ Реализовать state ниже первого tier
+□ Реализовать active budget state
+□ Реализовать partial/full budget states
+□ Добавить CTA на /cart при activeTier
+□ Добавить optional preview 3/4 products
+□ Повторно mount после Dawn section replacement
+□ Синхронизировать drawer, cart page и cart-icon-bubble
+□ Добавить ARIA progressbar attributes
+□ Добавить responsive drawer CSS
+□ Проверить отсутствие конфликта с checkout form/button
+□ Проверить product, collection и cart pages
+□ Проверить add/remove/quantity mutations
+□ Проверить tier up, tier down и потерю qualification
+□ Проверить пустую корзину
+□ Проверить desktop и mobile drawer
+□ Запустить node syntax checks
+□ Запустить npm run typecheck
+□ Запустить npm run build
+□ Выпустить новую Theme App Extension version
+```
+
+### Acceptance criteria
+
+- Drawer widget отображается на всех storefront-страницах, где доступен Dawn cart drawer.
+- Ниже первого tier пользователь видит корректный прогресс до unlock.
+- При существующем gift budget всегда доступна ссылка на `/cart`.
+- Текст CTA соответствует состоянию: choose, choose more или manage.
+- Значения tier, used budget и remaining budget совпадают с полной cart-page версией.
+- После Add to cart, Add as gift, remove и quantity change drawer обновляется без reload страницы.
+- Cart icon bubble и drawer остаются синхронизированными.
+- Drawer widget не дублируется после section replacement.
+- Checkout button остаётся видимым и рабочим.
+- При выключенном product preview drawer не выполняет запрос товаров.
+- При включённом preview отображается не более выбранного лимита и только товары, подходящие под remaining budget.
