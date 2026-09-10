@@ -357,13 +357,9 @@
 
     if (activeTier && nextTier) {
       // Between current and next tier
-      const rangeStart = activeTier.minAmount;
-      const rangeEnd = nextTier.minAmount;
       const progressPct = Math.min(
         100,
-        Math.max(0,
-          ((thresholdBase - rangeStart) / (rangeEnd - rangeStart)) * 100,
-        ),
+        Math.max(0, (thresholdBase / nextTier.minAmount) * 100),
       );
       const amountToNext = nextTier.minAmount - thresholdBase;
 
