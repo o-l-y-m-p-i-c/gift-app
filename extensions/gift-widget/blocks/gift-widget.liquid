@@ -1,14 +1,15 @@
 {% comment %}
-  Gift Widget — App Block for the cart page and cart drawer.
+  Gift Widget — App Block for the cart page.
   Shows available gifts when the cart reaches a configured threshold.
+  Styled for Prestige theme (Maestrooo) using theme CSS variables.
   Added from the Apps section in the theme customizer.
 
-  Place in both:
+  Place in:
     - Cart page section (Online Store → Customize → Cart)
-    - Cart drawer section (Online Store → Customize → Cart drawer)
 {% endcomment %}
 
 <div id="gift-widget-container"
+     class="color-scheme color-scheme--{{ settings.default_color_scheme.id }}"
      data-shop="{{ request.host }}"
      data-cart-total="{{ cart.total_price }}"
 ></div>
