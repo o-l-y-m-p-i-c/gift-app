@@ -23,7 +23,6 @@
 {% if label_full == blank %}{% assign label_full = 'gift.drawer.label_full' | t %}{% endif %}
 
 <div data-gift-drawer-widget
-     class="color-scheme color-scheme--{{ block.settings.color_scheme | default: settings.default_color_scheme }}"
      data-shop="{{ request.host }}"
      data-show-remaining="{{ block.settings.show_remaining | default: true }}"
      data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
@@ -54,14 +53,8 @@
   "target": "section",
   "settings": [
     {
-      "type": "color_scheme",
-      "id": "color_scheme",
-      "label": "Color scheme",
-      "default": "scheme-1"
-    },
-    {
       "type": "paragraph",
-      "content": "Compact gift progress widget for the cart drawer. Shows budget progress and a link to /cart for gift selection. Add this block to the Cart drawer section."
+      "content": "Compact gift progress widget for the cart drawer. Shows budget progress and a link to /cart for gift selection. The widget inherits the color scheme from its parent section."
     },
     {
       "type": "header",

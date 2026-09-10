@@ -108,15 +108,6 @@
     // Create the mount container
     mountContainer = document.createElement("div");
     mountContainer.className = "gift-drawer-widget";
-    // Copy color-scheme classes from source for theme CSS variables
-    if (sourceContainer.className) {
-      const schemeClasses = sourceContainer.className
-        .split(" ")
-        .filter((c) => c.startsWith("color-scheme"));
-      if (schemeClasses.length > 0) {
-        mountContainer.className = "gift-drawer-widget " + schemeClasses.join(" ");
-      }
-    }
     mountContainer.setAttribute("data-gift-drawer-mounted", "");
 
     // Insert before the footer
