@@ -359,9 +359,13 @@
     // ── Scrollable scale: each tier is a fixed-width column ──
     const allTiers = G.getTiers();
     const scaleMax = allTiers.length > 0 ? allTiers[allTiers.length - 1].minAmount : 0;
-    const currentPct = scaleMax > 0 ? Math.min(100, Math.max(0, (thresholdBase / scaleMax) * 100)) : 0;
     const STEP_WIDTH = 96; // px per tier column
     const totalWidth = allTiers.length * STEP_WIDTH;
+    // Dots are centered in columns: first dot at STEP_WIDTH/2, last at totalWidth - STEP_WIDTH/2
+    const usableStart = STEP_WIDTH / 2;
+    const usableRange = totalWidth - STEP_WIDTH;
+    const ratio = scaleMax > 0 ? Math.min(1, Math.max(0, thresholdBase / scaleMax)) : 0;
+    const fillPx = usableStart + ratio * usableRange;
 
     const tierSteps = allTiers.map((tier, i) => {
       const isUnlocked = thresholdBase >= tier.minAmount;
@@ -417,7 +421,7 @@
           <div class="gift-widget__scale-scroll" data-gift-scale-scroll>
             <div class="gift-widget__scale-track" style="min-width:${totalWidth}px">
               <div class="gift-widget__scale-line">
-                <div class="gift-widget__scale-line-fill" style="width:${currentPct}%"></div>
+                <div class="gift-widget__scale-line-fill" style="width:${fillPx}px"></div>
               </div>
               <div class="gift-widget__scale-steps">${tierSteps}</div>
             </div>

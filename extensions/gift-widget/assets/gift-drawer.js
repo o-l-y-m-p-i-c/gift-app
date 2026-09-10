@@ -239,7 +239,12 @@
       const scaleMax = tiers[tiers.length - 1].minAmount;
       const STEP_WIDTH = 88; // px per tier column
       const totalWidth = tiers.length * STEP_WIDTH;
-      const currentPct = Math.min(100, Math.max(0, (thresholdBase / scaleMax) * 100));
+      // Dots are centered in columns: first dot at STEP_WIDTH/2, last at totalWidth - STEP_WIDTH/2
+      // Map thresholdBase to pixel position along that usable range
+      const usableStart = STEP_WIDTH / 2;
+      const usableRange = totalWidth - STEP_WIDTH;
+      const ratio = scaleMax > 0 ? Math.min(1, Math.max(0, thresholdBase / scaleMax)) : 0;
+      const fillPx = usableStart + ratio * usableRange;
 
       // Build tier columns
       const tierSteps = tiers.map((tier, i) => {
@@ -292,7 +297,7 @@
         <div class="gift-drawer-widget__scale-scroll" data-gift-scale-scroll>
           <div class="gift-drawer-widget__scale-track" style="min-width:${totalWidth}px">
             <div class="gift-drawer-widget__scale-line">
-              <div class="gift-drawer-widget__scale-line-fill" style="width:${currentPct}%"></div>
+              <div class="gift-drawer-widget__scale-line-fill" style="width:${fillPx}px"></div>
             </div>
             <div class="gift-drawer-widget__scale-steps">${tierSteps}</div>
           </div>
