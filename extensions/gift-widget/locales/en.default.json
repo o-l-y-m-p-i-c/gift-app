@@ -33,6 +33,7 @@
       "disabled_label": "Add more to unlock gifts",
       "over_budget_label": "Exceeds remaining gift budget",
       "unavailable_label": "Unavailable as gift",
+      "excluded_label": "Not eligible as gift",
       "loading_label": "Adding gift…",
       "error_label": "Could not add free gift — try again",
       "added": "Gift added to cart!",

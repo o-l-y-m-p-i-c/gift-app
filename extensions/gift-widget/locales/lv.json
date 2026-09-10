@@ -33,6 +33,7 @@
       "disabled_label": "Pievienojiet vairāk lai atbloķētu dāvanas",
       "over_budget_label": "Pārsniedz atlikušo dāvanu budžetu",
       "unavailable_label": "Nav pieejams kā dāvana",
+      "excluded_label": "Nav piemērota dāvanai",
       "loading_label": "Pievieno dāvanu…",
       "error_label": "Neizdevās pievienot bezmaksas dāvanu — mēģiniet vēlreiz",
       "added": "Dāvana pievienota grozam!",

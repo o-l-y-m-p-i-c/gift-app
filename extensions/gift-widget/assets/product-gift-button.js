@@ -225,6 +225,11 @@
           disabled: true,
           remainingText,
         });
+      } else if (eligibility.reason === "excluded_collection" || eligibility.reason === "excluded_tag") {
+        setButtonState({
+          label: getLabel("excludedLabel") || "Not eligible as gift",
+          disabled: true,
+        });
       } else if (eligibility.reason === "busy") {
         setButtonState({
           label: getLabel("loadingLabel") || "Adding gift…",

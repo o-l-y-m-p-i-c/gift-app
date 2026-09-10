@@ -329,37 +329,53 @@
   // ─── Product fetch (shared logic) ──────────────────────────
 
   async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set()) {
-    const allProducts = [];
-    let page = 1;
-    const perPage = 250;
-    while (page <= 4) {
-      const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) break;
+    const shopDomain = G.getShopDomain?.() || "";
+    const appUrl = "/apps/gift-threshold";
+    try {
+      const res = await fetch(
+        `${appUrl}/products?shop=${shopDomain}&maxPrice=${maxPrice}`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const products = data.products || [];
-      if (products.length === 0) break;
-      allProducts.push(...products);
-      if (products.length < perPage) break;
-      page++;
-    }
-
-    const result = [];
-    for (const product of allProducts) {
-      for (const variant of product.variants || []) {
-        if (!variant.available) continue;
-        if (excludeVariantIds.has(String(variant.id))) continue;
-        if (variant.price > maxPrice) continue;
-        result.push({
-          variantId: String(variant.id),
-          title: product.title,
-          price: variant.price,
-          image: product.image?.src || "",
+      return (data.products || []).filter(
+        (p) => !excludeVariantIds.has(String(p.variantId)),
+      );
+    } catch (e) {
+      console.warn("[Gift Drawer] API products fetch failed, falling back to /products.json:", e);
+      // Fallback to storefront endpoint (no exclusion filtering)
+      const allProducts = [];
+      let page = 1;
+      const perPage = 250;
+      while (page <= 4) {
+        const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
+          headers: { Accept: "application/json" },
         });
+        if (!res.ok) break;
+        const data = await res.json();
+        const products = data.products || [];
+        if (products.length === 0) break;
+        allProducts.push(...products);
+        if (products.length < perPage) break;
+        page++;
       }
+
+      const result = [];
+      for (const product of allProducts) {
+        for (const variant of product.variants || []) {
+          if (!variant.available) continue;
+          if (excludeVariantIds.has(String(variant.id))) continue;
+          if (variant.price > maxPrice) continue;
+          result.push({
+            variantId: String(variant.id),
+            title: product.title,
+            price: variant.price,
+            image: product.image?.src || "",
+          });
+        }
+      }
+      return result;
     }
-    return result;
   }
 
   // ─── Cart update listener ──────────────────────────────────

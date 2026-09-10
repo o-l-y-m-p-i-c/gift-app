@@ -711,6 +711,7 @@
     ensureConfig,
     getTiers: () => tiers,
     getSettings: () => settings,
+    getShopDomain,
     // Cart helpers (also exposed for UI scripts that need them)
     fetchCart,
     getGiftItems,

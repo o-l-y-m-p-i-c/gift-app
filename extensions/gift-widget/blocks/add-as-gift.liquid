@@ -14,6 +14,8 @@
 {% if over_budget_label == blank %}{% assign over_budget_label = 'gift.product.over_budget_label' | t %}{% endif %}
 {% assign unavailable_label = block.settings.unavailable_label %}
 {% if unavailable_label == blank %}{% assign unavailable_label = 'gift.product.unavailable_label' | t %}{% endif %}
+{% assign excluded_label = block.settings.excluded_label %}
+{% if excluded_label == blank %}{% assign excluded_label = 'gift.product.excluded_label' | t %}{% endif %}
 {% assign loading_label = block.settings.loading_label %}
 {% if loading_label == blank %}{% assign loading_label = 'gift.product.loading_label' | t %}{% endif %}
 {% assign error_label = block.settings.error_label %}
@@ -30,6 +32,7 @@
      data-disabled-label="{{ disabled_label }}"
      data-over-budget-label="{{ over_budget_label }}"
      data-unavailable-label="{{ unavailable_label }}"
+     data-excluded-label="{{ excluded_label }}"
      data-loading-label="{{ loading_label }}"
      data-error-label="{{ error_label }}"
      data-show-remaining="{{ block.settings.show_remaining | default: true }}"

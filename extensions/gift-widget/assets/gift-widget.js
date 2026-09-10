@@ -513,49 +513,67 @@
   // ─── Gift products fetch ───────────────────────────────────
 
   async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set()) {
-    const allProducts = [];
-    let page = 1;
-    const perPage = 250;
-    while (page <= 4) {
-      const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) break;
+    const shopDomain = G.getShopDomain?.() || "";
+    const appUrl = "/apps/gift-threshold";
+    try {
+      const res = await fetch(
+        `${appUrl}/products?shop=${shopDomain}&maxPrice=${maxPrice}`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const products = data.products || [];
-      if (products.length === 0) break;
-      allProducts.push(...products);
-      if (products.length < perPage) break;
-      page++;
-    }
+      const products = (data.products || []).filter(
+        (p) => !excludeVariantIds.has(String(p.variantId)),
+      );
+      console.log(`[Gift Widget] API returned ${products.length} eligible gifts (maxPrice=${maxPrice} cents)`);
+      return products;
+    } catch (e) {
+      console.warn("[Gift Widget] API products fetch failed, falling back to /products.json:", e);
+      // Fallback to storefront endpoint (no exclusion filtering)
+      const allProducts = [];
+      let page = 1;
+      const perPage = 250;
+      while (page <= 4) {
+        const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) break;
+        const data = await res.json();
+        const products = data.products || [];
+        if (products.length === 0) break;
+        allProducts.push(...products);
+        if (products.length < perPage) break;
+        page++;
+      }
 
-    const eligible = [];
-    for (const product of allProducts) {
-      const image = product.images?.[0]?.src || "";
-      for (const variant of product.variants || []) {
-        const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
-        if (
-          priceCents > 0 &&
-          priceCents <= maxPrice &&
-          variant.available !== false &&
-          !excludeVariantIds.has(String(variant.id))
-        ) {
-          eligible.push({
-            productId: String(product.id),
-            variantId: String(variant.id),
-            title:
-              variant.title === "Default Title"
-                ? product.title
-                : `${product.title} — ${variant.title}`,
-            price: priceCents,
-            image,
-          });
+      const eligible = [];
+      for (const product of allProducts) {
+        const image = product.images?.[0]?.src || "";
+        for (const variant of product.variants || []) {
+          const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
+          if (
+            priceCents > 0 &&
+            priceCents <= maxPrice &&
+            variant.available !== false &&
+            !excludeVariantIds.has(String(variant.id))
+          ) {
+            eligible.push({
+              productId: String(product.id),
+              variantId: String(variant.id),
+              title:
+                variant.title === "Default Title"
+                  ? product.title
+                  : `${product.title} — ${variant.title}`,
+              price: priceCents,
+              image,
+            });
+          }
         }
       }
-    }
 
-    console.log(`[Gift Widget] Found ${eligible.length} eligible gifts (maxPrice=${maxPrice} cents) from ${allProducts.length} products`);
-    return eligible;
+      console.log(`[Gift Widget] Fallback found ${eligible.length} eligible gifts (maxPrice=${maxPrice} cents) from ${allProducts.length} products`);
+      return eligible;
+    }
   }
 
   // ─── Cart actions (delegate to gift-core) ──────────────────
