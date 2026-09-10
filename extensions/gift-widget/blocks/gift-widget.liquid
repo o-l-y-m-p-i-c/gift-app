@@ -9,7 +9,7 @@
 {% endcomment %}
 
 <div id="gift-widget-container"
-     class="color-scheme color-scheme--{{ settings.default_color_scheme.id }}"
+     class="color-scheme color-scheme--{{ block.settings.color_scheme | default: settings.default_color_scheme }}"
      data-shop="{{ request.host }}"
      data-cart-total="{{ cart.total_price }}"
 ></div>
@@ -52,6 +52,12 @@
     "templates": ["cart"]
   },
   "settings": [
+    {
+      "type": "color_scheme",
+      "id": "color_scheme",
+      "label": "Color scheme",
+      "default": "scheme-1"
+    },
     {
       "type": "paragraph",
       "content": "This block shows a free gift selector when the cart total reaches a configured threshold. Configure thresholds in the Gift Threshold app. Add this block to both the cart page and the cart drawer section for full coverage."

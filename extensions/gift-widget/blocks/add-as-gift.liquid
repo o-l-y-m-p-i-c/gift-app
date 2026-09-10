@@ -22,7 +22,7 @@
 {% if error_label == blank %}{% assign error_label = 'gift.product.error_label' | t %}{% endif %}
 
 <div id="add-as-gift-container"
-     class="add-as-gift color-scheme color-scheme--{{ settings.default_color_scheme.id }} {% if block.settings.full_width %}add-as-gift--full-width{% endif %}"
+     class="add-as-gift color-scheme color-scheme--{{ block.settings.color_scheme | default: settings.default_color_scheme }} {% if block.settings.full_width %}add-as-gift--full-width{% endif %}"
      data-shop="{{ request.host }}"
      data-product-id="{{ product.id }}"
      data-variant-id="{{ product.selected_or_first_available_variant.id }}"
@@ -78,6 +78,12 @@
     "templates": ["product"]
   },
   "settings": [
+    {
+      "type": "color_scheme",
+      "id": "color_scheme",
+      "label": "Color scheme",
+      "default": "scheme-1"
+    },
     {
       "type": "header",
       "content": "Button"

@@ -23,7 +23,7 @@
 {% if label_full == blank %}{% assign label_full = 'gift.drawer.label_full' | t %}{% endif %}
 
 <div data-gift-drawer-widget
-     class="color-scheme color-scheme--{{ settings.default_color_scheme }}"
+     class="color-scheme color-scheme--{{ block.settings.color_scheme | default: settings.default_color_scheme }}"
      data-shop="{{ request.host }}"
      data-gift-embed-mode="true"
      data-show-remaining="{{ block.settings.show_remaining | default: true }}"
@@ -55,6 +55,12 @@
   "name": "Gift Drawer Embed",
   "target": "head",
   "settings": [
+    {
+      "type": "color_scheme",
+      "id": "color_scheme",
+      "label": "Color scheme",
+      "default": "scheme-1"
+    },
     {
       "type": "paragraph",
       "content": "Globally injects the gift drawer widget into any theme's cart drawer. Enable this when the theme's cart drawer section does not support app blocks (e.g. Prestige). The widget auto-detects the cart drawer and mounts before its footer."
