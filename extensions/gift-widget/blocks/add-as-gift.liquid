@@ -7,7 +7,7 @@
 {% endcomment %}
 
 <div id="add-as-gift-container"
-     class="add-as-gift"
+     class="add-as-gift {% if block.settings.full_width %}add-as-gift--full-width{% endif %}"
      data-shop="{{ request.host }}"
      data-product-id="{{ product.id }}"
      data-variant-id="{{ product.selected_or_first_available_variant.id }}"
@@ -24,7 +24,7 @@
 >
 
   <button type="button"
-          class="add-as-gift__button {% if block.settings.button_style == 'secondary' %}add-as-gift__button--secondary{% else %}add-as-gift__button--primary{% endif %}"
+          class="add-as-gift__button {% if block.settings.button_style == 'secondary' %}add-as-gift__button--secondary{% else %}add-as-gift__button--primary{% endif %} {% if block.settings.full_width %}add-as-gift__button--full{% endif %}"
           disabled
           aria-live="polite">
     <span class="add-as-gift__label">{{ block.settings.button_label | default: 'Add as gift' }}</span>
@@ -107,6 +107,13 @@
         { "value": "secondary", "label": "Secondary" }
       ],
       "default": "primary"
+    },
+    {
+      "type": "checkbox",
+      "id": "full_width",
+      "label": "Make button full width",
+      "default": false,
+      "info": "Button stretches to fill available width (flex: 1 / width: 100%)"
     },
     {
       "type": "select",
