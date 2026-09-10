@@ -560,6 +560,87 @@
     for (const cb of cartUpdateSubscribers) {
       try { cb(cart); } catch (e) { console.warn("[gift-core] subscriber error:", e); }
     }
+    // Refresh Dawn storefront sections (cart drawer + cart icon bubble)
+    refreshDawnSections(cart);
+  }
+
+  /**
+   * Refresh Dawn theme storefront sections after a cart mutation.
+   * Dawn's cart drawer and cart-icon-bubble are rendered as sections
+   * and don't react to cart:updated events — they need to be re-fetched
+   * and swapped into the DOM.
+   */
+  async function refreshDawnSections(cart) {
+    // Cart icon bubble (header cart count)
+    try {
+      const bubble = document.getElementById("cart-icon-bubble");
+      if (bubble) {
+        const res = await fetch("/cart?section_id=cart-icon-bubble", {
+          headers: { Accept: "text/html" },
+        });
+        if (res.ok) {
+          const text = await res.text();
+          const doc = new DOMParser().parseFromString(text, "text/html");
+          const newBubble = doc.querySelector("#cart-icon-bubble");
+          if (newBubble) {
+            bubble.innerHTML = newBubble.innerHTML;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[gift-core] Cart icon bubble refresh failed:", e);
+    }
+
+    // Cart drawer items
+    try {
+      const drawerItems = document.querySelector("cart-drawer-items");
+      if (drawerItems) {
+        const res = await fetch("/cart?section_id=cart-drawer", {
+          headers: { Accept: "text/html" },
+        });
+        if (res.ok) {
+          const text = await res.text();
+          const doc = new DOMParser().parseFromString(text, "text/html");
+          const newDrawer = doc.querySelector("cart-drawer-items");
+          if (newDrawer) {
+            drawerItems.innerHTML = newDrawer.innerHTML;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[gift-core] Cart drawer refresh failed:", e);
+    }
+
+    // Re-init gift widget in all containers after section swaps
+    if (window.giftWidget && typeof window.giftWidget._init === "function") {
+      try { await window.giftWidget._init(); } catch (e) {
+        console.warn("[gift-core] Gift widget re-init failed:", e);
+      }
+    }
+
+    // Cart page items (if on /cart)
+    try {
+      const cartItemsDiv = document.querySelector(
+        "[data-id^='template--'][data-id*='cart-items']",
+      );
+      const sectionId = cartItemsDiv?.getAttribute("data-id");
+      if (sectionId) {
+        const res = await fetch(`${window.location.pathname}?section_id=${sectionId}`, {
+          headers: { Accept: "text/html" },
+        });
+        if (res.ok) {
+          const text = await res.text();
+          const doc = new DOMParser().parseFromString(text, "text/html");
+          const newItems = doc.querySelector(`[data-id="${sectionId}"]`);
+          const oldItems = document.querySelector(`[data-id="${sectionId}"]`);
+          if (newItems && oldItems) {
+            oldItems.innerHTML = newItems.innerHTML;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[gift-core] Cart page section refresh failed:", e);
+    }
   }
 
   function onCartUpdate(cb) {
