@@ -1,0 +1,135 @@
+{% comment %}
+  Gift Drawer Embed — App Embed Block for global gift drawer injection.
+  Works on themes that do not support @app blocks in the cart drawer section
+  (e.g. Prestige by Maestrooo). The embed injects the gift-drawer.js runtime
+  globally and the script auto-detects the cart drawer and mounts the widget.
+
+  Enable via: Online Store → Customize → App embeds → Gift Drawer Embed
+{% endcomment %}
+
+{% assign cta_choose = block.settings.cta_choose %}
+{% if cta_choose == blank %}{% assign cta_choose = 'gift.drawer.cta_choose' | t %}{% endif %}
+{% assign cta_more = block.settings.cta_more %}
+{% if cta_more == blank %}{% assign cta_more = 'gift.drawer.cta_more' | t %}{% endif %}
+{% assign cta_manage = block.settings.cta_manage %}
+{% if cta_manage == blank %}{% assign cta_manage = 'gift.drawer.cta_manage' | t %}{% endif %}
+{% assign label_unlock = block.settings.label_unlock %}
+{% if label_unlock == blank %}{% assign label_unlock = 'gift.drawer.label_unlock' | t %}{% endif %}
+{% assign label_unlocked = block.settings.label_unlocked %}
+{% if label_unlocked == blank %}{% assign label_unlocked = 'gift.drawer.label_unlocked' | t %}{% endif %}
+{% assign label_used = block.settings.label_used %}
+{% if label_used == blank %}{% assign label_used = 'gift.drawer.label_used' | t %}{% endif %}
+{% assign label_full = block.settings.label_full %}
+{% if label_full == blank %}{% assign label_full = 'gift.drawer.label_full' | t %}{% endif %}
+
+<div data-gift-drawer-widget
+     class="color-scheme color-scheme--{{ settings.default_color_scheme }}"
+     data-shop="{{ request.host }}"
+     data-gift-embed-mode="true"
+     data-show-remaining="{{ block.settings.show_remaining | default: true }}"
+     data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
+     data-cta-choose="{{ cta_choose }}"
+     data-cta-more="{{ cta_more }}"
+     data-cta-manage="{{ cta_manage }}"
+     data-label-unlock="{{ label_unlock }}"
+     data-label-unlocked="{{ label_unlocked }}"
+     data-label-used="{{ label_used }}"
+     data-label-full="{{ label_full }}"
+     style="display: none;"
+></div>
+
+<script type="application/json" data-gift-drawer-translations>
+  {
+    "available_gifts": {{ 'gift.drawer.available_gifts' | t | json }},
+    "remaining": {{ 'gift.drawer.remaining' | t | json }},
+    "loading": {{ 'gift.loading' | t | json }}
+  }
+</script>
+
+<script src="{{ 'gift-core.js' | asset_url }}" defer></script>
+<script src="{{ 'gift-drawer.js' | asset_url }}" defer></script>
+{{ 'gift-widget.css' | asset_url | stylesheet_tag }}
+
+{% schema %}
+{
+  "name": "Gift Drawer Embed",
+  "target": "head",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Globally injects the gift drawer widget into any theme's cart drawer. Enable this when the theme's cart drawer section does not support app blocks (e.g. Prestige). The widget auto-detects the cart drawer and mounts before its footer."
+    },
+    {
+      "type": "header",
+      "content": "Display"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_remaining",
+      "label": "Show remaining gift budget",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "product_preview",
+      "label": "Product preview",
+      "options": [
+        { "value": "disabled", "label": "Disabled (default)" },
+        { "value": "3", "label": "3 products" },
+        { "value": "4", "label": "4 products" }
+      ],
+      "default": "disabled",
+      "info": "Show a few eligible gift products in the drawer. Clicking a product navigates to /cart."
+    },
+    {
+      "type": "header",
+      "content": "Labels"
+    },
+    {
+      "type": "text",
+      "id": "cta_choose",
+      "label": "CTA — choose gifts",
+      "default": "Choose your gifts"
+    },
+    {
+      "type": "text",
+      "id": "cta_more",
+      "label": "CTA — choose more",
+      "default": "Choose more gifts"
+    },
+    {
+      "type": "text",
+      "id": "cta_manage",
+      "label": "CTA — manage gifts",
+      "default": "Manage gifts"
+    },
+    {
+      "type": "text",
+      "id": "label_unlock",
+      "label": "Label — below threshold",
+      "default": "Add [amount] more to unlock free gifts",
+      "info": "Use [amount] as a placeholder for the remaining amount."
+    },
+    {
+      "type": "text",
+      "id": "label_unlocked",
+      "label": "Label — budget unlocked",
+      "default": "You unlocked [budget] in free gifts",
+      "info": "Use [budget] as a placeholder for the gift budget."
+    },
+    {
+      "type": "text",
+      "id": "label_used",
+      "label": "Label — partial usage",
+      "default": "Used [amount] · Remaining [remaining]",
+      "info": "Use [amount] and [remaining] as placeholders."
+    },
+    {
+      "type": "text",
+      "id": "label_full",
+      "label": "Label — budget fully used",
+      "default": "Your gift budget is fully used"
+    }
+  ]
+}
+{% endschema %}

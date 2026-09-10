@@ -78,6 +78,10 @@
   // ─── Mounting ──────────────────────────────────────────────
 
   function findSourceContainer() {
+    // Prefer the block container (inside cart drawer section) over embed
+    const blockContainer = document.querySelector("[data-gift-drawer-widget]:not([data-gift-embed-mode])");
+    if (blockContainer) return blockContainer;
+    // Fall back to embed container (hidden, injected globally)
     return document.querySelector("[data-gift-drawer-widget]");
   }
 
