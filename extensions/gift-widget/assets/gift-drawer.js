@@ -236,15 +236,18 @@
       }
 
       // ── Scrollable scale: each tier is a fixed-width column ──
-      const scaleMax = tiers[tiers.length - 1].minAmount;
       const STEP_WIDTH = 88; // px per tier column
       const totalWidth = tiers.length * STEP_WIDTH;
-      // Dots are centered in columns: first dot at STEP_WIDTH/2, last at totalWidth - STEP_WIDTH/2
-      // Map thresholdBase to pixel position along that usable range
+      // Dots are centered in columns: dot i center = i*STEP_WIDTH + STEP_WIDTH/2.
+      // The line spans from the first dot center to the last dot center, so the
+      // fill's coordinate origin matches the dots exactly (no edge offset).
       const usableStart = STEP_WIDTH / 2;
       const usableRange = totalWidth - STEP_WIDTH;
-      const ratio = scaleMax > 0 ? Math.min(1, Math.max(0, thresholdBase / scaleMax)) : 0;
-      const fillPx = usableStart + ratio * usableRange;
+      // Fill ends at the NEXT tier target (the goal you're working toward).
+      // When maxed out (no next tier), the fill reaches the last dot.
+      const lastIdx = tiers.length - 1;
+      const nextIdx = nextTier ? tiers.indexOf(nextTier) : lastIdx;
+      const fillPx = nextIdx * STEP_WIDTH; // width within the line (line starts at first dot)
 
       // Build tier columns
       const tierSteps = tiers.map((tier, i) => {
@@ -297,7 +300,7 @@
         <div class="gift-drawer-widget__scale-scroll" data-gift-scale-scroll>
           <div class="gift-drawer-widget__scale-track" style="min-width:${totalWidth}px">
             <div class="gift-drawer-widget__scale-steps">
-              <div class="gift-drawer-widget__scale-line" style="width:${totalWidth}px">
+              <div class="gift-drawer-widget__scale-line" style="left:${usableStart}px;width:${usableRange}px">
                 <div class="gift-drawer-widget__scale-line-fill" style="width:${fillPx}px"></div>
               </div>
               ${tierSteps}
