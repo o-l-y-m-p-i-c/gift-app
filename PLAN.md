@@ -475,3 +475,254 @@ mutation SetGiftMetafield($productId: ID!, $metafield: MetafieldInput!) {
 | Тестирование | 1 день |
 | Деплой | 0.5 дня |
 | **Итого** | **~9 дней** |
+
+## 11. Product Page — Add as Gift
+
+### Goal
+
+Add an **Add as gift** button to Shopify product pages. The button must use the same eligibility, budget, cart-property, BXGY discount, and validation logic as the existing cart widget.
+
+A product that does not fit the remaining gift budget must not be added by the gift button. The regular Shopify **Add to cart** button remains available for purchasing it normally.
+
+### Recommended architecture
+
+Do not manually modify the theme footer. Use the existing Theme App Extension:
+
+```text
+extensions/gift-widget/
+├── blocks/
+│   ├── gift-widget.liquid          # Existing cart-page gift selector
+│   └── add-as-gift.liquid          # New product-page app block
+└── assets/
+    ├── gift-core.js                # Shared eligibility and gift-add workflow
+    ├── gift-widget.js              # Cart-page UI
+    ├── product-gift-button.js      # Product-page UI
+    └── gift-widget.css             # Shared styles
+```
+
+The merchant places the product block through:
+
+```text
+Online Store
+  → Customize
+  → Product template
+  → Product information
+  → Add block
+  → Add as gift
+```
+
+An App Embed is optional. Use it only if `gift-core.js` needs to run globally on collection pages, quick-add modals, cart drawers, or other storefront surfaces.
+
+### Runtime flow
+
+```mermaid
+flowchart TD
+    A[Product page loads] --> B[Read selected variant]
+    B --> C[Fetch cart, tiers, and settings]
+    C --> D[Calculate qualifying non-gift cart value]
+    D --> E[Find active tier and remaining gift budget]
+    E --> F{Variant available and price <= remaining?}
+    F -- No --> G[Disable Add as gift]
+    F -- Yes --> H[Enable Add as gift]
+    H --> I[Customer clicks button]
+    I --> J[Call shared gift-core addGift]
+    J --> K[Request BXGY code from app proxy]
+    K --> L[Add variant with gift properties]
+    L --> M[Apply generated GIFT code]
+    M --> N{Gift is fully free?}
+    N -- No --> O[Rollback new gift and show error]
+    N -- Yes --> P[Publish cart updated event]
+```
+
+### Shared gift runtime
+
+Extract the non-UI logic from `gift-widget.js` into `gift-core.js` and expose a small public API:
+
+```js
+window.giftApp = {
+  getCartState(),
+  getEligibility(variantId),
+  addGift(variantId),
+  removeGift(selectionId),
+};
+```
+
+Shared responsibilities:
+
+- Fetch `/cart.js`.
+- Fetch tiers and settings through the app proxy.
+- Exclude `_gift=true` lines from the qualifying cart value.
+- Calculate gift usage from original prices, not discounted prices.
+- Count one authorized gift per unique `_gift_selection`.
+- Calculate the active tier and remaining gift budget.
+- Request the generated BXGY code.
+- Add a gift with `_gift=true` and a unique `_gift_selection`.
+- Apply the generated code through `/cart/update.js`.
+- Verify that the expected number of gift units became fully free.
+- Roll back the newly added gift if code creation or application fails.
+- Dispatch `cart:updated` after a successful operation.
+
+The cart widget and product-page button must call this shared API instead of maintaining two implementations of the discount workflow.
+
+### Product app block
+
+Create `blocks/add-as-gift.liquid` with:
+
+- `target: "section"`.
+- `enabled_on.templates: ["product"]`.
+- A button container with the shop domain and initial variant data.
+- Product variant JSON for client-side variant switching.
+- Theme-editor settings for label, disabled text, alignment, and button style.
+- References to `gift-core.js`, `product-gift-button.js`, and shared CSS.
+
+Suggested UI states:
+
+| State | Button/message |
+|---|---|
+| No active tier | `Add €X more to unlock gifts` |
+| Eligible | `Add as gift` |
+| Variant exceeds remaining budget | `Exceeds remaining gift budget` |
+| Variant unavailable | `Unavailable as gift` |
+| Request running | `Adding gift…` |
+| Discount failed | `Could not add free gift — try again` |
+
+### Selected variant handling
+
+The button must follow the active product variant instead of always using `selected_or_first_available_variant`.
+
+Implementation steps:
+
+1. Render `product.variants | json` in the block.
+2. Read the current product form input named `id`.
+3. Listen for variant input changes and supported theme variant events.
+4. Resolve the selected variant price and availability.
+5. Recalculate button eligibility after every variant change.
+6. Recalculate after `cart:updated`, `cart:change`, and `cart:refresh`.
+
+### Eligibility rules
+
+Enable **Add as gift** only when all conditions are true:
+
+```text
+active tier exists
+AND selected variant is active
+AND selected variant is available for sale
+AND original variant price <= remaining gift budget
+AND variant is permitted by the merchant's gift-product rules
+AND no gift mutation is currently running
+```
+
+Both the browser and app-proxy backend must validate the selection. Browser validation is for UX; backend validation is authoritative.
+
+### Cart and discount behavior
+
+```mermaid
+sequenceDiagram
+    participant P as Product block
+    participant C as Shopify Cart
+    participant A as App Proxy
+    participant S as Shopify Admin API
+
+    P->>C: GET /cart.js
+    P->>A: POST /gift-code with authorized gift selections
+    A->>S: Create one BXGY code for all selected gifts
+    S-->>A: Code + gift quantity
+    A-->>P: Code + validated quantity/value
+    P->>C: POST /cart/add.js with _gift and _gift_selection
+    P->>C: POST /cart/update.js with generated code
+    C-->>P: Updated cart
+    P->>P: Verify expected free gift quantity
+    P->>C: Roll back new line if verification fails
+```
+
+Required behavior:
+
+- Multiple different gifts can be selected within the budget.
+- The same variant can be selected multiple times through the gift button.
+- Every button click creates a unique `_gift_selection`.
+- Manual cart quantity increases do not create new authorized gift selections.
+- BXGY `discountOnQuantity.quantity` equals the number of authorized selections.
+- Units beyond the authorized gift count remain at normal price.
+- A product exceeding the remaining budget is not added by the gift button.
+- Removing one gift recreates the combined code for the remaining gifts.
+- Removing the last gift clears generated `GIFT-*` codes while preserving applicable merchant codes.
+
+### Backend improvements
+
+Recommended additions before enabling the product-page button broadly:
+
+1. Add a dedicated eligibility endpoint, for example `/apps/gift-threshold/gift-eligibility`.
+2. Accept the current variant ID and authorized gift selections.
+3. Validate active tier, product availability, original price, and total gift budget.
+4. Return structured eligibility data:
+
+```json
+{
+  "eligible": true,
+  "tierId": 46,
+  "giftBudget": 14025,
+  "usedBudget": 9600,
+  "remainingBudget": 4425,
+  "variantPrice": 3400
+}
+```
+
+5. Keep Admin API calls and discount creation on the backend only.
+6. Add server-side request throttling and generated-code cleanup.
+7. Return stable error codes so both storefront UIs show consistent messages.
+
+### Merchant configuration ideas
+
+Add settings for controlling which products can be gifts:
+
+- Explicit product or variant selection.
+- Eligible collections.
+- Product tags.
+- A product metafield such as `gift.is_gift=true`.
+- Excluded products and collections.
+- Product-page button enabled/disabled.
+- Custom button label and styling.
+- Show/hide remaining gift budget.
+
+The backend must enforce these rules; Liquid and JavaScript filtering alone are not sufficient.
+
+### Implementation checklist
+
+```text
+□ Extract shared calculations and cart operations into gift-core.js
+□ Refactor cart widget to call the shared runtime
+□ Add add-as-gift.liquid product app block
+□ Add product-gift-button.js
+□ Track selected product variant changes
+□ Render eligibility and remaining-budget states
+□ Add gifts with unique _gift_selection values
+□ Reuse the existing app-proxy BXGY workflow
+□ Validate the returned gift quantity before cart mutation
+□ Validate fully free gift units after discount application
+□ Roll back failed or partially discounted gift additions
+□ Preserve normal Shopify Add to cart behavior
+□ Test different gift variants
+□ Test repeated selection of the same variant
+□ Test a product equal to the remaining budget
+□ Test a product one cent above the remaining budget
+□ Test manual cart quantity increases
+□ Test removing one gift and the final gift
+□ Test product pages in Dawn desktop and mobile layouts
+□ Run npm run typecheck
+□ Run npm run build
+□ Deploy the Render backend before the Shopify extension
+□ Release the updated Theme App Extension
+```
+
+### Acceptance criteria
+
+- The product-page button is added through the Shopify theme editor, with no manual theme edits.
+- The button always uses the currently selected variant.
+- The button is disabled when the variant is unavailable or exceeds the remaining budget.
+- Clicking the button never silently adds a paid product.
+- All selected gift units are fully free after the code is applied.
+- Duplicate selections through the gift UI are supported.
+- Manual quantity increases remain paid.
+- Product-page and cart-page gift calculations produce identical results.
+- Existing non-gift discount codes are preserved where Shopify combination rules allow them.
+- Failed discount application leaves no paid gift line in the cart.
