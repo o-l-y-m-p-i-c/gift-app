@@ -1,0 +1,134 @@
+{% comment %}
+  Add as Gift — App Block for product pages.
+  Renders an "Add as gift" button next to the product form.
+  Uses the shared gift-core.js runtime for eligibility and the BXGY workflow.
+
+  Place via: Online Store → Customize → Product template → Add block → Add as gift
+{% endcomment %}
+
+<div id="add-as-gift-container"
+     class="add-as-gift"
+     data-shop="{{ request.host }}"
+     data-product-id="{{ product.id }}"
+     data-variant-id="{{ product.selected_or_first_available_variant.id }}"
+     data-variant-price="{{ product.selected_or_first_available_variant.price }}"
+     data-variant-available="{{ product.selected_or_first_available_variant.available }}"
+     data-button-label="{{ block.settings.button_label | default: 'Add as gift' }}"
+     data-disabled-label="{{ block.settings.disabled_label | default: 'Add more to unlock gifts' }}"
+     data-over-budget-label="{{ block.settings.over_budget_label | default: 'Exceeds remaining gift budget' }}"
+     data-unavailable-label="{{ block.settings.unavailable_label | default: 'Unavailable as gift' }}"
+     data-loading-label="{{ block.settings.loading_label | default: 'Adding gift…' }}"
+     data-error-label="{{ block.settings.error_label | default: 'Could not add free gift — try again' }}"
+     data-show-remaining="{{ block.settings.show_remaining | default: true }}"
+     style="text-align: {{ block.settings.alignment }};"
+>
+
+  <button type="button"
+          class="add-as-gift__button {% if block.settings.button_style == 'secondary' %}add-as-gift__button--secondary{% else %}add-as-gift__button--primary{% endif %}"
+          disabled
+          aria-live="polite">
+    <span class="add-as-gift__label">{{ block.settings.button_label | default: 'Add as gift' }}</span>
+    <span class="add-as-gift__spinner" style="display:none;"></span>
+  </button>
+
+  <p class="add-as-gift__status" style="display:none;"></p>
+
+  {% if block.settings.show_remaining %}
+    <p class="add-as-gift__remaining" style="display:none;"></p>
+  {% endif %}
+</div>
+
+<script type="application/json" data-gift-product-variants>
+  {{ product.variants | json }}
+</script>
+
+<script src="{{ 'gift-core.js' | asset_url }}" defer></script>
+<script src="{{ 'product-gift-button.js' | asset_url }}" defer></script>
+{{ 'gift-widget.css' | asset_url | stylesheet_tag }}
+
+{% schema %}
+{
+  "name": "Add as Gift",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": [
+    {
+      "type": "header",
+      "content": "Button"
+    },
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Button label (eligible)",
+      "default": "Add as gift"
+    },
+    {
+      "type": "text",
+      "id": "disabled_label",
+      "label": "Label when no tier is active",
+      "default": "Add more to unlock gifts"
+    },
+    {
+      "type": "text",
+      "id": "over_budget_label",
+      "label": "Label when variant exceeds remaining budget",
+      "default": "Exceeds remaining gift budget"
+    },
+    {
+      "type": "text",
+      "id": "unavailable_label",
+      "label": "Label when variant is unavailable",
+      "default": "Unavailable as gift"
+    },
+    {
+      "type": "text",
+      "id": "loading_label",
+      "label": "Label while adding gift",
+      "default": "Adding gift…"
+    },
+    {
+      "type": "text",
+      "id": "error_label",
+      "label": "Label on error",
+      "default": "Could not add free gift — try again"
+    },
+    {
+      "type": "header",
+      "content": "Appearance"
+    },
+    {
+      "type": "select",
+      "id": "button_style",
+      "label": "Button style",
+      "options": [
+        { "value": "primary", "label": "Primary" },
+        { "value": "secondary", "label": "Secondary" }
+      ],
+      "default": "primary"
+    },
+    {
+      "type": "select",
+      "id": "alignment",
+      "label": "Alignment",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ],
+      "default": "left"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_remaining",
+      "label": "Show remaining gift budget",
+      "default": true
+    },
+    {
+      "type": "paragraph",
+      "content": "This block adds an 'Add as gift' button to product pages. Customers can add the current variant as a free gift when their cart qualifies for a gift tier and the variant price fits the remaining gift budget. Configure gift tiers in the Gift Threshold app."
+    }
+  ]
+}
+{% endschema %}

@@ -1,12 +1,16 @@
 /**
  * Gift Widget — Cart page logic.
  *
- * Features:
- * - Always visible: shows current tier, progress to next tier, available budget
- * - Multi-gift: select multiple gifts until budget is exhausted
- * - Remaining budget: after each selection, shows remaining and filters products
- * - Loading/error states with retry
- * - Cart sync with Dawn theme (cart page + drawer + header icon)
+ * Uses the shared gift-core.js runtime (window.giftApp) for:
+ *   - cart fetching
+ *   - tier/budget calculations
+ *   - gift add/remove workflow
+ *   - BXGY discount code generation and application
+ *
+ * This file retains only:
+ *   - Cart-page rendering (progress bar, selected gifts, product carousel)
+ *   - Cart section refresh (Dawn cart page + drawer)
+ *   - Cart abuse prevention (quantity increase interception)
  */
 
 (function () {
@@ -21,19 +25,18 @@
   }
   window.giftWidgetInitialized = true;
 
-  const GIFT_PROPERTY_KEY = "_gift";
-  const GIFT_PROPERTY_VALUE = "true";
-  const GIFT_SELECTION_PROPERTY_KEY = "_gift_selection";
+  // ─── gift-core shorthand ──────────────────────────────────
+  const G = window.giftApp;
+  if (!G) {
+    console.error("[Gift Widget] gift-core.js must be loaded before gift-widget.js");
+    return;
+  }
 
-  let tiers = [];
-  let settings = {
-    useTotalAfterDiscounts: true,
-    showLevelUpNotification: true,
-    showRemovalNotification: true,
-  };
+  const GIFT_PROPERTY_KEY = G.GIFT_PROPERTY_KEY;
+  const GIFT_SELECTION_PROPERTY_KEY = G.GIFT_SELECTION_PROPERTY_KEY;
+
   let lastActiveTierId = null;
   let giftProducts = [];
-  let cartRequest = null;
   let cartUpdateDebounce = null;
   let isRefreshingSection = false;
   let isSelectingGift = false;
@@ -47,16 +50,8 @@
 
     renderLoading(el);
 
-    const shopDomain = el.dataset.shop;
-    const appUrl = getAppUrl();
-
     try {
-      const [tiersData, settingsData] = await Promise.all([
-        fetchJson(`${appUrl}/tiers?shop=${shopDomain}`),
-        fetchJson(`${appUrl}/settings?shop=${shopDomain}`),
-      ]);
-      tiers = (tiersData.tiers || []).sort((a, b) => a.minAmount - b.minAmount);
-      settings = settingsData.settings || settings;
+      await G.ensureConfig();
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch config:", e);
       renderError(el, "Gift configuration is temporarily unavailable.", () => init());
@@ -65,7 +60,7 @@
 
     let cart;
     try {
-      cart = await fetchCart();
+      cart = await G.fetchCart();
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch cart:", e);
       renderError(el, "Unable to load your cart. Please refresh the page.", () => init());
@@ -75,24 +70,11 @@
     await onCartUpdate(cart);
   }
 
-  // ─── Cart logic ────────────────────────────────────────────
-
-  async function fetchCart() {
-    if (cartRequest) return cartRequest;
-    cartRequest = fetch("/cart.js").then(async (response) => {
-      if (!response.ok) throw new Error(`Unable to load cart (${response.status}).`);
-      return response.json();
-    });
-    try {
-      return await cartRequest;
-    } finally {
-      cartRequest = null;
-    }
-  }
+  // ─── Cart section refresh ──────────────────────────────────
 
   async function refreshCartSection() {
     isRefreshingSection = true;
-    const cart = await fetchCart().catch(() => null);
+    const cart = await G.fetchCart().catch(() => null);
 
     try {
       document.dispatchEvent(new CustomEvent("cart:refresh", { detail: { cart } }));
@@ -170,109 +152,18 @@
     }
   }
 
-  // ─── Gift helpers ──────────────────────────────────────────
-
-  function getGiftItems(cart) {
-    return cart.items.filter(
-      (item) => item.properties && item.properties[GIFT_PROPERTY_KEY] === GIFT_PROPERTY_VALUE,
-    );
-  }
-
-  function getGiftSelections(cart) {
-    const selections = new Map();
-    for (const item of getGiftItems(cart)) {
-      const selectionId = item.properties?.[GIFT_SELECTION_PROPERTY_KEY] || item.key;
-      if (!selections.has(selectionId)) selections.set(selectionId, item);
-    }
-    return [...selections.values()];
-  }
-
-  function getPriceValue(value) {
-    const price = Number(value);
-    return Number.isFinite(price) ? price : null;
-  }
-
-  function getOriginalLinePrice(item) {
-    const originalLinePrice = getPriceValue(item.original_line_price);
-    if (originalLinePrice !== null) return originalLinePrice;
-    const originalPrice = getPriceValue(item.original_price);
-    if (originalPrice !== null) return originalPrice * item.quantity;
-    const price = getPriceValue(item.price);
-    if (price !== null) return price * item.quantity;
-    return getPriceValue(item.line_price) || 0;
-  }
-
-  function getOriginalUnitPrice(item) {
-    const originalPrice = getPriceValue(item.original_price);
-    if (originalPrice !== null) return originalPrice;
-    return Math.round(getOriginalLinePrice(item) / Math.max(1, item.quantity));
-  }
-
-  function getFinalLinePrice(item) {
-    const finalLinePrice = getPriceValue(item.final_line_price);
-    if (finalLinePrice !== null) return finalLinePrice;
-    const finalPrice = getPriceValue(item.final_price);
-    if (finalPrice !== null) return finalPrice * item.quantity;
-    return getPriceValue(item.line_price) || 0;
-  }
-
-  function getTotalGiftValue(cart) {
-    return getGiftSelections(cart).reduce((sum, item) => sum + getOriginalUnitPrice(item), 0);
-  }
-
-  function getFreeGiftQuantity(cart) {
-    return getGiftItems(cart).reduce((sum, item) => {
-      const unitPrice = getOriginalUnitPrice(item);
-      if (unitPrice <= 0) return sum;
-      const discountValue = getOriginalLinePrice(item) - getFinalLinePrice(item);
-      return sum + Math.min(item.quantity, Math.floor(discountValue / unitPrice));
-    }, 0);
-  }
-
-  function getThresholdBase(cart) {
-    return cart.items
-      .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
-      .reduce(
-        (sum, item) => sum + (
-          settings.useTotalAfterDiscounts
-            ? getFinalLinePrice(item)
-            : getOriginalLinePrice(item)
-        ),
-        0,
-      );
-  }
-
-  function findActiveTier(thresholdBase) {
-    const active = tiers
-      .filter((t) => t.minAmount <= thresholdBase)
-      .sort((a, b) => b.minAmount - a.minAmount);
-    return active[0] || null;
-  }
-
-  function findNextTier(thresholdBase) {
-    const next = tiers
-      .filter((t) => t.minAmount > thresholdBase)
-      .sort((a, b) => a.minAmount - b.minAmount);
-    return next[0] || null;
-  }
-
   // ─── Cart update handler ───────────────────────────────────
 
   async function onCartUpdate(cart) {
     if (!cart || typeof cart.total_price !== "number") {
-      cart = await fetchCart();
+      cart = await G.fetchCart();
     }
 
-    const thresholdBase = getThresholdBase(cart);
-    const activeTier = findActiveTier(thresholdBase);
-    const nextTier = findNextTier(thresholdBase);
-    const giftItems = getGiftItems(cart);
-    const giftSelectionCount = getGiftSelections(cart).length;
-    const freeGiftQuantity = getFreeGiftQuantity(cart);
-    const totalGiftValue = getTotalGiftValue(cart);
-    const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
+    const state = G.computeCartState(cart);
+    const { activeTier, nextTier, thresholdBase, remainingBudget } = state;
+    const settings = G.getSettings();
 
-    if (giftSelectionCount > 0 && freeGiftQuantity !== giftSelectionCount) {
+    if (state.giftSelectionCount > 0 && state.freeGiftQuantity !== state.giftSelectionCount) {
       await removeAllGifts(cart);
       if (settings.showRemovalNotification) {
         showNotification("Your gifts were removed because the full gift discount was not applied.", "warning");
@@ -285,7 +176,7 @@
     if (tierChanged) {
       if (lastActiveTierId !== null && activeTier && settings.showLevelUpNotification) {
         showNotification(
-          `🎉 New gift tier unlocked! Choose gifts up to ${formatPrice(activeTier.giftAmount)}`,
+          `🎉 New gift tier unlocked! Choose gifts up to ${G.formatPrice(activeTier.giftAmount)}`,
           "success",
         );
       }
@@ -293,24 +184,23 @@
     }
 
     // If no active tier but gifts in cart → remove them
-    if (!activeTier && giftItems.length > 0) {
+    if (!activeTier && state.giftSelectionCount > 0) {
       await removeAllGifts(cart);
       await refreshCartSection();
       if (settings.showRemovalNotification) {
         showNotification("Your cart no longer qualifies for a free gift.", "warning");
       }
-      // Re-fetch after removal
-      cart = await fetchCart();
+      cart = await G.fetchCart();
     }
 
     // If gifts exceed budget (tier changed down) → remove excess
-    if (activeTier && totalGiftValue > activeTier.giftAmount) {
+    if (activeTier && state.totalGiftValue > activeTier.giftAmount) {
       await removeAllGifts(cart);
       await refreshCartSection();
       if (settings.showRemovalNotification) {
         showNotification("Your gifts were removed. Please choose again.", "info");
       }
-      cart = await fetchCart();
+      cart = await G.fetchCart();
     }
 
     await renderWidget(cart, activeTier, nextTier, thresholdBase);
@@ -348,15 +238,14 @@
     const el = document.getElementById("gift-widget-container");
     if (!el) return;
 
-    const giftItems = getGiftSelections(cart);
-    const totalGiftValue = getTotalGiftValue(cart);
+    const giftItems = G.getGiftSelections(cart);
+    const totalGiftValue = G.getTotalGiftValue(cart);
     const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
 
     // ── Progress bar section ──
     let progressHtml = "";
 
     if (activeTier && nextTier) {
-      // Between current and next tier
       const progressPct = Math.min(
         100,
         Math.max(0, (thresholdBase / nextTier.minAmount) * 100),
@@ -367,10 +256,10 @@
         <div class="gift-widget__progress">
           <div class="gift-widget__progress-info">
             <span class="gift-widget__progress-current">
-              ${formatPrice(activeTier.giftAmount)} gift budget
+              ${G.formatPrice(activeTier.giftAmount)} gift budget
             </span>
             <span class="gift-widget__progress-next">
-              ${formatPrice(amountToNext)} to unlock ${formatPrice(nextTier.giftAmount)}
+              ${G.formatPrice(amountToNext)} to unlock ${G.formatPrice(nextTier.giftAmount)}
             </span>
           </div>
           <div class="gift-widget__progress-bar">
@@ -379,12 +268,11 @@
         </div>
       `;
     } else if (activeTier && !nextTier) {
-      // Highest tier reached
       progressHtml = `
         <div class="gift-widget__progress">
           <div class="gift-widget__progress-info">
             <span class="gift-widget__progress-current">
-              ${formatPrice(activeTier.giftAmount)} gift budget — max tier!
+              ${G.formatPrice(activeTier.giftAmount)} gift budget — max tier!
             </span>
           </div>
           <div class="gift-widget__progress-bar">
@@ -392,9 +280,8 @@
           </div>
         </div>
       `;
-    } else if (!activeTier && tiers.length > 0) {
-      // No tier yet — show progress to first tier
-      const firstTier = tiers[0];
+    } else if (!activeTier && G.getTiers().length > 0) {
+      const firstTier = G.getTiers()[0];
       const progressPct = Math.min(
         100,
         Math.max(0, (thresholdBase / firstTier.minAmount) * 100),
@@ -405,7 +292,7 @@
         <div class="gift-widget__progress">
           <div class="gift-widget__progress-info">
             <span class="gift-widget__progress-current">
-              ${formatPrice(amountToFirst)} to unlock your first gift
+              ${G.formatPrice(amountToFirst)} to unlock your first gift
             </span>
           </div>
           <div class="gift-widget__progress-bar">
@@ -425,7 +312,7 @@
             <img src="${item.image || ""}" alt="${item.product_title}" class="gift-widget__selected-image" loading="lazy" />
             <div class="gift-widget__selected-info">
               <p class="gift-widget__selected-name">${item.product_title}</p>
-              <p class="gift-widget__selected-price">${formatPrice(getOriginalUnitPrice(item))}</p>
+              <p class="gift-widget__selected-price">${G.formatPrice(G.getOriginalUnitPrice(item))}</p>
             </div>
             <button type="button"
               class="gift-widget__selected-remove"
@@ -450,7 +337,6 @@
     let selectionHtml = "";
 
     if (!activeTier) {
-      // No active tier
       selectionHtml = `
         <div class="gift-widget__no-tier">
           <p class="gift-widget__subtitle">
@@ -459,20 +345,17 @@
         </div>
       `;
     } else if (remainingBudget <= 0) {
-      // Budget fully used
       selectionHtml = `
         <div class="gift-widget__budget-used">
           <p class="gift-widget__subtitle">
-            🎁 Your gift budget of ${formatPrice(activeTier.giftAmount)} is fully used!
+            🎁 Your gift budget of ${G.formatPrice(activeTier.giftAmount)} is fully used!
           </p>
         </div>
       `;
     } else {
-      // Show eligible products for remaining budget
-      // Show loading while fetching
       const budgetLabel = giftItems.length > 0
-        ? `${formatPrice(remainingBudget)} remaining`
-        : `Choose gifts up to ${formatPrice(activeTier.giftAmount)}`;
+        ? `${G.formatPrice(remainingBudget)} remaining`
+        : `Choose gifts up to ${G.formatPrice(activeTier.giftAmount)}`;
 
       selectionHtml = `
         <div class="gift-widget__selection-loading">
@@ -481,7 +364,6 @@
         </div>
       `;
 
-      // Render the full widget first (with progress + selected + loading)
       el.innerHTML = `
         <div class="gift-widget">
           <div class="gift-widget__header">
@@ -497,9 +379,6 @@
         </div>
       `;
 
-      // Now fetch products for remaining budget
-      // Exclude regular cart items (non-gift), but allow selecting the same
-      // gift product multiple times until budget is exhausted.
       const excludeIds = new Set(
         cart.items
           .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
@@ -526,7 +405,6 @@
       }
       giftProducts = products;
 
-      // Replace loading with product cards or empty message
       const selectionContainer = el.querySelector(".gift-widget__selection-loading");
       if (!selectionContainer) return;
 
@@ -534,7 +412,7 @@
         selectionContainer.outerHTML = `
           <div class="gift-widget__no-products">
             <p class="gift-widget__subtitle">
-              No eligible products found under ${formatPrice(remainingBudget)}.
+              No eligible products found under ${G.formatPrice(remainingBudget)}.
             </p>
           </div>
         `;
@@ -546,7 +424,7 @@
               <img src="${p.image}" alt="${p.title}" class="gift-widget__image" loading="lazy" />
               <div class="gift-widget__info">
                 <p class="gift-widget__name">${p.title}</p>
-                <p class="gift-widget__price">${formatPrice(p.price)}</p>
+                <p class="gift-widget__price">${G.formatPrice(p.price)}</p>
               </div>
               <button type="button" class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}', '${activeTier.id}')">
                 <span class="gift-widget__select-label">Select</span>
@@ -573,7 +451,7 @@
           <div>
             <h3 class="gift-widget__title">Free Gifts</h3>
             <p class="gift-widget__subtitle">
-              ${activeTier ? `Budget: ${formatPrice(activeTier.giftAmount)}` : "Unlock free gifts"}
+              ${activeTier ? `Budget: ${G.formatPrice(activeTier.giftAmount)}` : "Unlock free gifts"}
             </p>
           </div>
         </div>
@@ -632,7 +510,7 @@
     return eligible;
   }
 
-  // ─── Cart actions ──────────────────────────────────────────
+  // ─── Cart actions (delegate to gift-core) ──────────────────
 
   async function selectGift(variantId, tierId) {
     if (isSelectingGift) return;
@@ -648,118 +526,13 @@
     if (clickedLabel) clickedLabel.style.display = "none";
     if (clickedSpinner) clickedSpinner.style.display = "inline-block";
 
-    let giftAdded = false;
-    let addedGiftSelectionId = null;
-    const shopDomain =
-      document.getElementById("gift-widget-container")?.dataset.shop || "";
-
     try {
-      const initialCart = await fetchCart();
-      const qualifyingVariantIds = initialCart.items
-        .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
-        .map((item) => String(item.variant_id));
-
-      // Collect one variant ID per gift-widget selection plus the new selection.
-      // Manual quantity increases remain paid and don't increase the BXGY benefit.
-      const existingGiftVariantIds = getGiftSelections(initialCart)
-        .map((item) => String(item.variant_id));
-      const allGiftVariantIds = [...existingGiftVariantIds, variantId];
-
-      // 1. Request a single discount code covering ALL gifts
-      const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          giftVariantIds: allGiftVariantIds,
-          tierId,
-          qualifyingVariantIds,
-          shop: shopDomain,
-        }),
-      });
-      const codeData = await codeResponse.json().catch(() => ({}));
-      if (!codeResponse.ok || !codeData.code) {
-        throw new Error(codeData.error || "Unable to create gift discount.");
+      const result = await G.addGift(variantId, tierId);
+      if (!result.ok) {
+        throw new Error(result.error || "Unable to add this gift.");
       }
-      if (Number(codeData.giftQuantity) !== allGiftVariantIds.length) {
-        throw new Error("The gift discount quantity is out of sync. Please try again.");
-      }
-
-      // 2. Add gift to cart
-      addedGiftSelectionId = typeof window.crypto?.randomUUID === "function"
-        ? window.crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const addResponse = await fetch("/cart/add.js", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: [{
-            id: Number(variantId),
-            quantity: 1,
-            properties: {
-              [GIFT_PROPERTY_KEY]: GIFT_PROPERTY_VALUE,
-              [GIFT_SELECTION_PROPERTY_KEY]: addedGiftSelectionId,
-            },
-          }],
-        }),
-      });
-      const addData = await addResponse.json().catch(() => ({}));
-      if (!addResponse.ok) {
-        throw new Error(addData.description || "Unable to add this gift.");
-      }
-      giftAdded = true;
-
-      // 3. Apply discount code — replace old GIFT-* codes with the new one
-      const cart = await fetchCart();
-      const nonGiftCodes = (cart.discount_codes || [])
-        .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
-        .map((d) => d.code);
-      const discountStr = [...nonGiftCodes, codeData.code].join(",");
-      console.log("[Gift Widget] Applying discount:", discountStr);
-      const updateResponse = await fetch("/cart/update.js", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          discount: discountStr,
-        }),
-      });
-      const updateData = await updateResponse.json().catch(() => ({}));
-      console.log("[Gift Widget] Update response status:", updateResponse.status);
-      console.log("[Gift Widget] Cart discount_codes after update:", updateData.discount_codes);
-      if (!updateResponse.ok) {
-        console.error("[Gift Widget] Cart update failed:", updateData);
-        throw new Error(updateData.description || "Unable to apply the gift discount.");
-      }
-
-      const giftCode = (updateData.discount_codes || []).find((discount) => discount.code === codeData.code);
-      const updatedGiftQuantity = getGiftItems(updateData)
-        .reduce((sum, item) => sum + item.quantity, 0);
-      const freeGiftQuantity = getFreeGiftQuantity(updateData);
-      if (
-        !giftCode?.applicable ||
-        freeGiftQuantity !== allGiftVariantIds.length
-      ) {
-        console.error("[Gift Widget] Gift discount was only partially applied:", {
-          code: codeData.code,
-          expectedGiftQuantity: allGiftVariantIds.length,
-          updatedGiftQuantity,
-          freeGiftQuantity,
-          discountCodes: updateData.discount_codes,
-        });
-        throw new Error("The selected gift could not be made fully free.");
-      }
-
-      // 4. Refresh cart section
       await refreshCartSection();
     } catch (e) {
-      if (giftAdded) {
-        const cart = await fetchCart().catch(() => null);
-        const addedGift = cart?.items.find(
-          (item) => item.properties?.[GIFT_SELECTION_PROPERTY_KEY] === addedGiftSelectionId,
-        );
-        if (addedGift) {
-          await removeGift(addedGift.key);
-        }
-      }
       console.error("[Gift Widget] Failed to add gift:", e);
       showNotification(e.message || "Unable to add this gift.", "warning");
 
@@ -771,29 +544,15 @@
     }
   }
 
-  async function removeGiftByKey(key) {
-    const response = await fetch("/cart/change.js", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: key, quantity: 0 }),
-    });
-    if (!response.ok) {
-      throw new Error(`Unable to remove gift (${response.status}).`);
-    }
-    return response.json();
-  }
-
   async function removeGift(key) {
     if (removingGiftKey) return;
     removingGiftKey = key;
 
-    // Show spinner on the remove button
     const removeBtn = document.querySelector(`[data-gift-key="${key}"] .gift-widget__selected-remove`);
     if (removeBtn) {
       removeBtn.disabled = true;
       const label = removeBtn.querySelector(".gift-widget__remove-label");
       if (label) label.style.display = "none";
-      // Add spinner if not already present
       if (!removeBtn.querySelector(".gift-widget__remove-spinner")) {
         const spinner = document.createElement("span");
         spinner.className = "gift-widget__remove-spinner";
@@ -803,70 +562,10 @@
     }
 
     try {
-      await removeGiftByKey(key);
-
-      // After removing, check if there are remaining gifts.
-      // If so, create a new combined discount code for them.
-      const updatedCart = await fetchCart();
-      const remainingGifts = getGiftItems(updatedCart);
-
-      if (remainingGifts.length > 0) {
-        // Recreate the discount for the remaining gift-widget selections.
-        const remainingGiftVariantIds = getGiftSelections(updatedCart)
-          .map((item) => String(item.variant_id));
-        const qualifyingVariantIds = updatedCart.items
-          .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
-          .map((item) => String(item.variant_id));
-
-        const shopDomain =
-          document.getElementById("gift-widget-container")?.dataset.shop || "";
-
-        const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            giftVariantIds: remainingGiftVariantIds,
-            tierId: lastActiveTierId,
-            qualifyingVariantIds,
-            shop: shopDomain,
-          }),
-        });
-        const codeData = await codeResponse.json().catch(() => ({}));
-
-        if (codeResponse.ok && codeData.code) {
-          // Replace old GIFT-* codes with the new one
-          const nonGiftCodes = (updatedCart.discount_codes || [])
-            .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
-            .map((d) => d.code);
-          await fetch("/cart/update.js", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              discount: [...nonGiftCodes, codeData.code].join(","),
-            }),
-          });
-        }
-      } else {
-        // No gifts left — remove all GIFT-* codes
-        const nonGiftCodes = (updatedCart.discount_codes || [])
-          .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("GIFT-"))
-          .map((d) => d.code);
-        if (nonGiftCodes.length > 0) {
-          await fetch("/cart/update.js", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ discount: nonGiftCodes.join(",") }),
-          });
-        } else {
-          // Clear all discount codes
-          await fetch("/cart/update.js", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ discount: "" }),
-          });
-        }
+      const result = await G.removeGift(key);
+      if (!result.ok) {
+        throw new Error(result.error || "Unable to remove gift.");
       }
-
       await refreshCartSection();
     } catch (e) {
       console.error("[Gift Widget] Failed to remove gift:", e);
@@ -884,16 +583,16 @@
   }
 
   async function removeAllGifts(cart) {
-    const gifts = getGiftItems(cart);
+    const gifts = G.getGiftItems(cart);
     for (const gift of gifts) {
       try {
-        await removeGiftByKey(gift.key);
+        await G.removeGiftByKey(gift.key);
       } catch (e) {
         console.error("[Gift Widget] Failed to remove gift:", e);
       }
     }
 
-    const updatedCart = await fetchCart();
+    const updatedCart = await G.fetchCart();
     const nonGiftCodes = (updatedCart.discount_codes || [])
       .filter((discount) => discount.applicable !== false && discount.code && !discount.code.startsWith("GIFT-"))
       .map((discount) => discount.code);
@@ -904,14 +603,8 @@
     });
   }
 
-  // ─── Cart update listener ──────────────────────────────────
+  // ─── Cart abuse prevention ─────────────────────────────────
 
-  /**
-   * Intercept cart change requests to prevent quantity INCREASES on gift items.
-   * Legitimate duplicates (same gift added twice → qty=2) are allowed.
-   * Abuse (increasing qty from cart table) is blocked.
-   * BXGY discountOnQuantity already limits free items server-side.
-   */
   function interceptCartChanges() {
     const originalFetch = window.fetch;
     window.fetch = async function (input, init) {
@@ -921,15 +614,13 @@
       if (url.includes("/cart/change.js") || url.includes("/cart/update.js") || url.includes("/cart/add.js")) {
         const parsed = parseBody(body);
         if (parsed) {
-          const cart = await fetchCart().catch(() => null);
+          const cart = await G.fetchCart().catch(() => null);
           if (cart) {
-            const giftKeys = new Set(getGiftItems(cart).map((item) => item.key));
-            const giftVariantIds = new Set(getGiftItems(cart).map((item) => String(item.variant_id)));
-            const giftQtyByKey = new Map(getGiftItems(cart).map((item) => [item.key, item.quantity]));
+            const giftKeys = new Set(G.getGiftItems(cart).map((item) => item.key));
+            const giftVariantIds = new Set(G.getGiftItems(cart).map((item) => String(item.variant_id)));
+            const giftQtyByKey = new Map(G.getGiftItems(cart).map((item) => [item.key, item.quantity]));
 
-            // /cart/change.js with id (key) or line (1-based index)
             if (url.includes("/cart/change.js")) {
-              // Block qty INCREASE on gift items (new qty > current qty)
               if (parsed.id && giftKeys.has(parsed.id)) {
                 const currentQty = giftQtyByKey.get(parsed.id) || 0;
                 if (parsed.quantity > currentQty) {
@@ -941,7 +632,6 @@
                   });
                 }
               }
-              // Dawn uses line (1-based index) + quantity
               if (parsed.line) {
                 const lineIndex = parsed.line - 1;
                 const item = cart.items[lineIndex];
@@ -959,7 +649,6 @@
               }
             }
 
-            // /cart/update.js with updates array or object
             if (url.includes("/cart/update.js") && parsed.updates) {
               let modified = false;
               if (Array.isArray(parsed.updates)) {
@@ -992,7 +681,6 @@
               }
             }
 
-            // /cart/add.js — block adding with qty > 1 for existing gift variants
             if (url.includes("/cart/add.js") && parsed.items) {
               let modified = false;
               const newItems = parsed.items.map((item) => {
@@ -1014,7 +702,6 @@
       return originalFetch(input, init);
     };
 
-    // ── 2. Intercept XMLHttpRequest ──
     const originalOpen = XMLHttpRequest.prototype.open;
     const originalSend = XMLHttpRequest.prototype.send;
 
@@ -1028,36 +715,29 @@
       if (url.includes("/cart/change.js") || url.includes("/cart/update.js")) {
         const parsed = parseBody(body);
         if (parsed) {
-          // We need to check synchronously since XHR send is not async-friendly here
-          // Store for async check
           this._giftWidgetBody = parsed;
-          // Do a quick synchronous check using a cached cart if available
-          // The real enforcement happens in onCartUpdate anyway
         }
       }
       return originalSend.call(this, body);
     };
 
-    // ── 3. Intercept form submissions to /cart ──
     document.addEventListener("submit", async (e) => {
       const form = e.target;
       if (!form || !form.action) return;
       const action = form.getAttribute("action") || "";
       if (!action.includes("/cart")) return;
 
-      // Check if this is a quantity update form
       const formData = new FormData(form);
       const updates = formData.get("updates[]") || formData.get("updates");
       if (!updates) return;
 
-      const cart = await fetchCart().catch(() => null);
+      const cart = await G.fetchCart().catch(() => null);
       if (!cart) return;
 
-      const giftKeys = new Set(getGiftItems(cart).map((item) => item.key));
-      const giftQtyByKey = new Map(getGiftItems(cart).map((item) => [item.key, item.quantity]));
+      const giftKeys = new Set(G.getGiftItems(cart).map((item) => item.key));
+      const giftQtyByKey = new Map(G.getGiftItems(cart).map((item) => [item.key, item.quantity]));
       if (giftKeys.size === 0) return;
 
-      // Check if any gift item quantity is being increased beyond current
       const updatesEntries = formData.getAll("updates[]");
       let hasAbuse = false;
       cart.items.forEach((item, index) => {
@@ -1097,18 +777,13 @@
     return null;
   }
 
-  /**
-   * Disable quantity inputs on gift line items in the cart DOM.
-   * This prevents the user from even trying to increase the quantity.
-   */
   function disableGiftQuantityInputs(cart) {
-    const gifts = getGiftItems(cart);
+    const gifts = G.getGiftItems(cart);
     if (gifts.length === 0) return;
 
     const giftKeys = new Set(gifts.map((g) => g.key));
     const giftQtyByKey = new Map(gifts.map((g) => [g.key, g.quantity]));
 
-    // Dawn cart page: quantity inputs inside cart-items
     const cartItems = document.querySelectorAll(
       "[data-id^='template--'][data-id*='cart-items'] .cart-item, " +
       "cart-drawer-items .cart-item, " +
@@ -1126,7 +801,6 @@
 
       if (key && giftKeys.has(key)) {
         const currentQty = (key && giftQtyByKey.get(key)) || 1;
-        // Lock quantity inputs to current value — prevent increases
         const inputs = item.querySelectorAll("input[name='quantity'], input[name='updates[]'], .quantity__input, [data-quantity-input]");
         inputs.forEach((input) => {
           input.max = String(currentQty);
@@ -1134,7 +808,6 @@
           input.value = String(currentQty);
           input.setAttribute("readonly", "readonly");
         });
-        // Disable only the + button, keep - button for removal
         const buttons = item.querySelectorAll(".quantity__button, [data-quantity-button]");
         buttons.forEach((btn) => {
           const isPlus = btn.name === "plus" ||
@@ -1152,12 +825,14 @@
     });
   }
 
+  // ─── Cart update listener ──────────────────────────────────
+
   function listenForCartUpdates() {
     function scheduleCartRefresh() {
       if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
       cartUpdateDebounce = setTimeout(async () => {
         cartUpdateDebounce = null;
-        const cart = await fetchCart();
+        const cart = await G.fetchCart();
         await onCartUpdate(cart);
       }, 300);
     }
@@ -1195,7 +870,7 @@
               await window.giftWidget._init();
             }
           } else {
-            const cart = await fetchCart();
+            const cart = await G.fetchCart();
             await onCartUpdate(cart);
           }
         }, 300);
@@ -1205,28 +880,6 @@
   }
 
   // ─── Utils ─────────────────────────────────────────────────
-
-  function getAppUrl() { return "/apps/gift-threshold"; }
-  function getFetchHeaders() { return { Accept: "application/json" }; }
-
-  async function fetchJson(url) {
-    const response = await fetch(url, { headers: getFetchHeaders() });
-    const contentType = response.headers.get("content-type") || "unknown";
-    const body = await response.text();
-    const normalizedBody = body.replace(/^\uFEFF/, "").trim();
-    if (!response.ok || normalizedBody.startsWith("<")) {
-      throw new Error(`Expected JSON from ${url}, received ${response.status} ${contentType} at ${response.url}`);
-    }
-    try {
-      return JSON.parse(normalizedBody);
-    } catch {
-      throw new Error(`Invalid JSON from ${url}, received ${response.status} ${contentType} at ${response.url}`);
-    }
-  }
-
-  function formatPrice(cents) {
-    return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(cents / 100);
-  }
 
   function showNotification(message, type) {
     const el = document.getElementById("gift-widget-container");
@@ -1246,6 +899,7 @@
     _init: init,
   };
 
+  interceptCartChanges();
   listenForCartUpdates();
 
   if (document.readyState === "loading") {

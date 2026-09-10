@@ -359,3 +359,74 @@
   text-align: center;
   padding: 16px 0;
 }
+
+/* ─── Product page — Add as gift button ─────────────────── */
+
+.add-as-gift {
+  margin: 12px 0;
+}
+
+.add-as-gift__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 24px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  font-family: inherit;
+}
+
+.add-as-gift__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.add-as-gift__button--primary {
+  background: #008060;
+  color: #fff;
+}
+
+.add-as-gift__button--primary:hover:not(:disabled) {
+  background: #006e52;
+}
+
+.add-as-gift__button--secondary {
+  background: transparent;
+  border-color: #008060;
+  color: #008060;
+}
+
+.add-as-gift__button--secondary:hover:not(:disabled) {
+  background: rgba(0, 128, 96, 0.08);
+}
+
+.add-as-gift__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: gift-widget-spin 0.6s linear infinite;
+}
+
+.add-as-gift__status {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.add-as-gift__status--success { color: #008060; }
+.add-as-gift__status--error { color: #d72c0d; }
+.add-as-gift__status--info { color: #6b7280; }
+
+.add-as-gift__remaining {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
