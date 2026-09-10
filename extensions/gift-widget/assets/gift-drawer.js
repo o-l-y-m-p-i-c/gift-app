@@ -75,6 +75,28 @@
     return fallback;
   }
 
+  // ─── Checkout redirect ─────────────────────────────────────
+  // Delegated capture-phase listener: survives Prestige drawer DOM replacement.
+  // When the merchant toggle "redirect_checkout" is enabled, clicking the
+  // cart-drawer checkout button navigates to /cart instead of submitting.
+  function handleCheckoutClick(event) {
+    const target = event.target;
+    if (!target || !target.closest) return;
+
+    const checkoutButton = target.closest('cart-drawer button[name="checkout"], cart-drawer [name="checkout"]');
+    if (!checkoutButton) return;
+
+    const container = sourceContainer || findSourceContainer();
+    if (!container) return;
+
+    const enabled = container.dataset.redirectCheckout;
+    if (enabled !== "true") return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.location.href = "/cart";
+  }
+
   // ─── Mounting ──────────────────────────────────────────────
 
   function findSourceContainer() {
@@ -446,6 +468,10 @@
 
   // Public API for re-init after section replacement
   window.giftDrawer = { render, init };
+
+  // Delegated checkout interception — registered once on document (capture phase)
+  // so it survives Prestige replacing cart-drawer innerHTML on cart updates.
+  document.addEventListener("click", handleCheckoutClick, true);
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

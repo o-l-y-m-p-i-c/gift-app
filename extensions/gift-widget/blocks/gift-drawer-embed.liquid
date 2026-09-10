@@ -26,6 +26,7 @@
      data-shop="{{ request.host }}"
      data-gift-embed-mode="true"
      data-show-remaining="{{ block.settings.show_remaining | default: true }}"
+     data-redirect-checkout="{{ block.settings.redirect_checkout | default: false }}"
      data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
      data-cta-choose="{{ cta_choose }}"
      data-cta-more="{{ cta_more }}"
@@ -67,6 +68,13 @@
       "id": "show_remaining",
       "label": "Show remaining gift budget",
       "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "redirect_checkout",
+      "label": "Redirect checkout button to cart page",
+      "default": false,
+      "info": "When enabled, clicking the checkout button in the cart drawer opens /cart instead of going to checkout."
     },
     {
       "type": "select",
