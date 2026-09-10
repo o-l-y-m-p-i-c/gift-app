@@ -296,10 +296,12 @@
       html += `
         <div class="gift-drawer-widget__scale-scroll" data-gift-scale-scroll>
           <div class="gift-drawer-widget__scale-track" style="min-width:${totalWidth}px">
-            <div class="gift-drawer-widget__scale-line">
-              <div class="gift-drawer-widget__scale-line-fill" style="width:${fillPx}px"></div>
+            <div class="gift-drawer-widget__scale-steps">
+              <div class="gift-drawer-widget__scale-line" style="width:${totalWidth}px">
+                <div class="gift-drawer-widget__scale-line-fill" style="width:${fillPx}px"></div>
+              </div>
+              ${tierSteps}
             </div>
-            <div class="gift-drawer-widget__scale-steps">${tierSteps}</div>
           </div>
         </div>
       `;

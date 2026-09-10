@@ -420,10 +420,12 @@
           </div>
           <div class="gift-widget__scale-scroll" data-gift-scale-scroll>
             <div class="gift-widget__scale-track" style="min-width:${totalWidth}px">
-              <div class="gift-widget__scale-line">
-                <div class="gift-widget__scale-line-fill" style="width:${fillPx}px"></div>
+              <div class="gift-widget__scale-steps">
+                <div class="gift-widget__scale-line" style="width:${totalWidth}px">
+                  <div class="gift-widget__scale-line-fill" style="width:${fillPx}px"></div>
+                </div>
+                ${tierSteps}
               </div>
-              <div class="gift-widget__scale-steps">${tierSteps}</div>
             </div>
           </div>
         </div>
