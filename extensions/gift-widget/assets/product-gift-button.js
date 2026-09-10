@@ -223,6 +223,7 @@
   async function handleClick() {
     if (isAdding || button.disabled) return;
     isAdding = true;
+    let addSucceeded = false;
 
     setButtonState({
       label: getLabel("loadingLabel") || "Adding gift…",
@@ -242,14 +243,14 @@
         throw new Error(result.error || "Unable to add this gift.");
       }
 
+      addSucceeded = true;
+      // Keep button disabled — updateButton() will re-enable if still eligible
       setButtonState({
         label: getLabel("buttonLabel") || "Add as gift",
-        disabled: false,
+        disabled: true,
         statusText: "Gift added to cart!",
         statusType: "success",
       });
-      // Re-evaluate after a short delay
-      setTimeout(updateButton, 1500);
     } catch (e) {
       console.error("[Product Gift Button] Failed to add gift:", e);
       setButtonState({
@@ -261,6 +262,11 @@
       setTimeout(updateButton, 3000);
     } finally {
       isAdding = false;
+      if (addSucceeded) {
+        // Re-check eligibility immediately — re-enables button only if
+        // the variant still fits in the remaining gift budget.
+        updateButton();
+      }
     }
   }
 
