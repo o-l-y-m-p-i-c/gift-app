@@ -265,6 +265,7 @@
 }
 
 .gift-widget__progress-fill {
+  display: block;
   height: 100%;
   background: linear-gradient(90deg, #4caf50, #66bb6a);
   border-radius: 4px;
@@ -501,6 +502,7 @@
 }
 
 .gift-drawer-widget__progress-fill {
+  display: block;
   height: 100%;
   background: var(--color-button, #008060);
   border-radius: var(--buttons-radius-outset, 6px);
