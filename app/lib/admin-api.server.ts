@@ -1,45 +1,33 @@
 /**
- * Lightweight Shopify Admin GraphQL client using a static access token.
+ * Shopify Admin GraphQL client using OAuth sessions from Prisma.
  *
- * The Admin API access token is obtained from:
- *   Shopify Admin → Apps → [app] → App setup → Admin API integration
- * It does NOT expire and does NOT require OAuth sessions.
+ * No static access token needed — the token is stored automatically
+ * in the Session table when a merchant installs the app via OAuth.
  *
- * Set SHOPIFY_ADMIN_ACCESS_TOKEN and SHOPIFY_SHOP_DOMAIN in the environment.
+ * Uses shopify.unauthenticated.admin(shop) from Shopify App Remix,
+ * which looks up the offline session for the given shop domain.
  */
+
+import { unauthenticated } from "~/shopify.server";
 
 const API_VERSION = "2026-07";
 
-export function getAdminConfig() {
-  const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-  const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN;
-
-  if (!accessToken || !shopDomain) {
-    return null;
-  }
-
-  return { accessToken, shopDomain };
-}
-
+/**
+ * Execute a Shopify Admin GraphQL query for a specific shop.
+ * Uses the OAuth session stored in Prisma (no env token needed).
+ */
 export async function adminGraphql(
   query: string,
   variables: Record<string, unknown> = {},
+  shop?: string,
 ) {
-  const config = getAdminConfig();
-  if (!config) {
-    throw new Error("SHOPIFY_ADMIN_ACCESS_TOKEN or SHOPIFY_SHOP_DOMAIN is not set.");
+  if (!shop) {
+    throw new Error("Shop domain is required for adminGraphql.");
   }
 
-  const endpoint = `https://${config.shopDomain}/admin/api/${API_VERSION}/graphql.json`;
+  const { admin } = await unauthenticated.admin(shop);
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": config.accessToken,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+  const response = await admin.graphql(query, { variables });
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -49,4 +37,26 @@ export async function adminGraphql(
   }
 
   return response.json();
+}
+
+/**
+ * Get the shop domain from a request URL's ?shop= parameter.
+ */
+export function getShopFromRequest(request: Request): string {
+  const url = new URL(request.url);
+  return url.searchParams.get("shop") || "";
+}
+
+/**
+ * Check if admin API access is available for a given shop.
+ * Returns true if an OAuth session exists in the database.
+ */
+export async function hasAdminAccess(shop: string): Promise<boolean> {
+  if (!shop || !shop.includes(".myshopify.com")) return false;
+  try {
+    await unauthenticated.admin(shop);
+    return true;
+  } catch {
+    return false;
+  }
 }

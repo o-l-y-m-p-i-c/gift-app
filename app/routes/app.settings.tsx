@@ -36,8 +36,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const shopId = session.shop;
 
   const settings = await getSettings(shopId);
-  const collections = await fetchCollectionsForPicker();
-  const tags = await fetchProductTagsForPicker();
+  const collections = await fetchCollectionsForPicker(shopId);
+  const tags = await fetchProductTagsForPicker(shopId);
 
   return json({
     settings: {

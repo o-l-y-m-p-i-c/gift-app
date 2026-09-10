@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "969b879ff2fc49642ac1a83621577c27"
-name = "Davines Gift App"
+client_id = "aa476795bd4bee04a4ce772f07b73561"
+name = "Davines Main Gift App"
 application_url = "https://gift-app-uvlp.onrender.com"
 embedded = true
 

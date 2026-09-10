@@ -2,22 +2,28 @@ import { randomBytes } from "node:crypto";
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
+import { adminGraphql, hasAdminAccess } from "~/lib/admin-api.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const preflight = handleCorsPreflight(request);
   if (preflight) return preflight;
 
-  const config = getAdminConfig();
-  if (!config) {
+  const body = await request.json().catch(() => null);
+  const shop: string = body?.shop || "";
+
+  if (!shop || !shop.includes(".myshopify.com")) {
+    return corsJson({ error: "Missing or invalid shop parameter." }, { status: 400 });
+  }
+
+  const hasAccess = await hasAdminAccess(shop);
+  if (!hasAccess) {
     return corsJson(
-      { error: "Server is not configured. Set SHOPIFY_ADMIN_ACCESS_TOKEN and SHOPIFY_SHOP_DOMAIN." },
+      { error: "App is not installed on this shop. Install it from the Shopify admin." },
       { status: 500 },
     );
   }
 
-  const body = await request.json().catch(() => null);
-  return handleGiftCode(config.shopDomain, body);
+  return handleGiftCode(shop, body);
 }
 
 /**
@@ -102,11 +108,12 @@ async function handleGiftCode(shopDomain: string, body: any) {
         }
       `,
       { ids: allGids },
+      shopDomain,
     );
   } catch (e: any) {
     console.error("[gift-code] Admin API variant query failed:", e?.message || e);
     return corsJson(
-      { error: "Shop connection error. Check SHOPIFY_ADMIN_ACCESS_TOKEN." },
+      { error: "Shop connection error. App may not be installed on this shop." },
       { status: 502 },
     );
   }
@@ -219,11 +226,12 @@ async function handleGiftCode(shopDomain: string, body: any) {
           appliesOncePerCustomer: false,
         },
       },
+      shopDomain,
     );
   } catch (e: any) {
     console.error("[gift-code] Discount creation failed:", e?.message || e);
     return corsJson(
-      { error: "Shop connection error. Check SHOPIFY_ADMIN_ACCESS_TOKEN." },
+      { error: "Shop connection error. App may not be installed on this shop." },
       { status: 502 },
     );
   }

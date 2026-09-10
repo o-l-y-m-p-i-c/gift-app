@@ -1,11 +1,11 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
+import { adminGraphql, hasAdminAccess } from "~/lib/admin-api.server";
 import { getSettings } from "~/models/settings.server";
 
 /**
  * Fetch eligible gift products for a given max price.
- * Uses the static Admin API access token — no sessions needed.
+ * Uses the OAuth session stored in Prisma — no static token needed.
  * Excludes products in collections marked as excluded in app settings.
  */
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -20,9 +20,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return corsJson({ products: [] });
   }
 
-  const config = getAdminConfig();
-  if (!config) {
-    console.error("[api.products] SHOPIFY_ADMIN_ACCESS_TOKEN not configured");
+  if (!shop || !shop.includes(".myshopify.com")) {
+    console.error("[api.products] Missing or invalid shop parameter");
+    return corsJson({ products: [] });
+  }
+
+  const hasAccess = await hasAdminAccess(shop);
+  if (!hasAccess) {
+    console.error("[api.products] No OAuth session found for shop:", shop);
     return corsJson({ products: [] });
   }
 
@@ -83,7 +88,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const maxPages = 20; // 20 × 250 = 5000 products max
 
     while (hasNextPage && pageCount < maxPages) {
-      const data: any = await adminGraphql(query, { first: 250, after: cursor });
+      const data: any = await adminGraphql(query, { first: 250, after: cursor }, shop);
 
       if (data.errors) {
         console.error("[api.products] GraphQL errors:", JSON.stringify(data.errors));

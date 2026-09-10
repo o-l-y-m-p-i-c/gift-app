@@ -1,5 +1,5 @@
 import { prisma } from "~/db.server";
-import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
+import { adminGraphql } from "~/lib/admin-api.server";
 
 export async function getSettings(shopId: string) {
   let settings = await prisma.appSettings.findUnique({ where: { shopId } });
@@ -35,9 +35,8 @@ export async function updateSettings(
  * Fetch all product tags from Shopify Admin API for the exclusion picker.
  * Returns string[] sorted alphabetically.
  */
-export async function fetchProductTagsForPicker() {
-  const config = getAdminConfig();
-  if (!config) return [];
+export async function fetchProductTagsForPicker(shop: string) {
+  if (!shop) return [];
 
   const allTags = new Set<string>();
   let cursor: string | null = null;
@@ -61,7 +60,7 @@ export async function fetchProductTagsForPicker() {
     `;
 
     try {
-      const data: any = await adminGraphql(query, { first: 250, after: cursor });
+      const data: any = await adminGraphql(query, { first: 250, after: cursor }, shop);
       const edges = data?.data?.products?.edges || [];
       for (const edge of edges) {
         for (const tag of edge.node?.tags || []) {
@@ -83,9 +82,8 @@ export async function fetchProductTagsForPicker() {
  * Fetch all collections from Shopify Admin API for the exclusion picker.
  * Returns [{ id, title, handle, productsCount }] sorted by title.
  */
-export async function fetchCollectionsForPicker() {
-  const config = getAdminConfig();
-  if (!config) return [];
+export async function fetchCollectionsForPicker(shop: string) {
+  if (!shop) return [];
 
   const query = `
     query CollectionsForPicker($first: Int!) {
@@ -105,7 +103,7 @@ export async function fetchCollectionsForPicker() {
   `;
 
   try {
-    const data = await adminGraphql(query, { first: 250 });
+    const data = await adminGraphql(query, { first: 250 }, shop);
     const edges = data?.data?.collections?.edges || [];
     return edges.map((edge: any) => ({
       id: edge.node.id,

@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
-import { adminGraphql, getAdminConfig } from "~/lib/admin-api.server";
+import { adminGraphql, hasAdminAccess } from "~/lib/admin-api.server";
 import { getActiveTiers } from "~/models/tier.server";
 import { getSettings } from "~/models/settings.server";
 
@@ -64,8 +64,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const firstTier = sortedTiers[0];
 
   // Look up the variant price and availability via Admin API
-  const config = getAdminConfig();
-  if (!config) {
+  const hasAccess = await hasAdminAccess(shop);
+  if (!hasAccess) {
     return corsJson({
       eligible: false,
       reason: "server_not_configured",
@@ -97,6 +97,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         }
       `,
       { id: variantGid },
+      shop,
     );
 
     const node = variantData.data?.node;
@@ -157,6 +158,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           }
         `,
         { productId: variantProductId, collectionIds: excludedCollections },
+        shop,
       );
 
       const productCollections = collectionCheck.data?.product?.collections?.edges || [];
@@ -200,6 +202,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           }
         `,
         { ids: selectionGids },
+        shop,
       );
 
       const nodes = selectionData.data?.nodes || [];
