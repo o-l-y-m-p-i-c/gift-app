@@ -14,23 +14,23 @@
     "unable_load": "Nevar ielādēt preces.",
     "no_products": "Nav atrastas piemērotas preces zem {{ amount }}.",
     "choose_up_to": "Izvēlieties preces līdz {{ amount }}",
-    "remaining": "{{ amount }} atlikušies",
+    "remaining": "atlicis {{ amount }}",
     "budget_label": "Bilance: {{ amount }}",
     "unlock_free": "Atbloķēt bonusa bilanci",
     "drawer": {
       "cta_choose": "Izvēlieties preces",
       "cta_more": "Izvēlieties vēl preces",
       "cta_manage": "Pārvaldīt izvēli",
-      "label_unlock": "Pievienojiet vēl {{ amount }} lai atbloķētu bonusa bilanci",
-      "label_unlocked": "Jūs atbloķējāt {{ budget }} bonusa bilancē",
-      "label_used": "Izlietots {{ amount }} · Atlikušies {{ remaining }}",
+      "label_unlock": "Pievienojiet vēl {{ amount }}, lai atbloķētu bonusa bilanci",
+      "label_unlocked": "Atbloķēta {{ budget }} bonusa bilance",
+      "label_used": "Izlietots {{ amount }} · atlicis {{ remaining }}",
       "label_full": "Jūsu bonusa bilance ir pilnībā izmantota",
       "available_gifts": "Pieejamās preces",
-      "remaining": "{{ amount }} atlikušies"
+      "remaining": "atlicis {{ amount }}"
     },
     "product": {
       "button_label": "Pievienot kā bonusu",
-      "disabled_label": "Pievienojiet vairāk lai atbloķētu bonusu",
+      "disabled_label": "Pievienojiet vairāk, lai atbloķētu bonusu",
       "over_budget_label": "Pārsniedz atlikušo bonusa bilanci",
       "unavailable_label": "Nav pieejams kā bonuss",
       "excluded_label": "Nav piemērots bonusam",
@@ -38,13 +38,13 @@
       "error_label": "Neizdevās pievienot — mēģiniet vēlreiz",
       "added": "Pievienots grozam!",
       "remaining_budget": "Atlikušā bonusa bilance: {{ amount }}",
-      "add_more": "Pievienojiet vēl {{ amount }} lai atbloķētu bonusu"
+      "add_more": "Pievienojiet vēl {{ amount }}, lai atbloķētu bonusu"
     },
     "notifications": {
       "tier_unlocked": "🎉 Jauns bonusa līmenis atbloķēts! Izvēlieties preces līdz {{ amount }}",
       "removed_discount": "Jūsu izvēle tika noņemta, jo atlaide netika piemērota.",
       "removed_no_qualify": "Jūsu grozs vairs nekvalificējas bonusa bilancei.",
-      "removed_choose_again": "Jūsu izvēle tika noņemta. Lūdzu izvēlieties vēlreiz."
+      "removed_choose_again": "Jūsu izvēle tika noņemta. Lūdzu, izvēlieties vēlreiz."
     }
   }
 }
