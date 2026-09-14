@@ -12,7 +12,7 @@
     "to_unlock_next": "{{ amount }} to unlock {{ budget }}",
     "to_unlock_first": "{{ amount }} to unlock your first bonus",
     "unlock_more": "Add more items to your cart to unlock bonus balance!",
-    "budget_full": "💰 Your bonus balance of {{ amount }} is fully used!",
+    "budget_full": "Your bonus balance of {{ amount }} is fully used!",
     "unable_load": "Unable to load products.",
     "no_products": "No eligible products found under {{ amount }}.",
     "choose_up_to": "Choose products up to {{ amount }}",

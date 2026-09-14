@@ -12,7 +12,7 @@
     "to_unlock_next": "{{ amount }} līdz nākamajam {{ budget }}",
     "to_unlock_first": "{{ amount }} līdz pirmajam bonusam",
     "unlock_more": "Pievienojiet vairāk preču grozam, lai atbloķētu bonusa bilanci!",
-    "budget_full": "💰 Jūsu bonusa bilance {{ amount }} ir pilnībā izmantota!",
+    "budget_full": "Jūsu bonusa bilance {{ amount }} ir pilnībā izmantota!",
     "unable_load": "Nevar ielādēt preces.",
     "no_products": "Nav atrastas piemērotas preces zem {{ amount }}.",
     "choose_up_to": "Izvēlieties preces līdz {{ amount }}",
