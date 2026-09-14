@@ -1,6 +1,8 @@
 {
   "gift": {
     "title": "Bonusa bilance",
+    "promo_title": "TAGAD AR KATRU PIRKUMU, SĀKOT NO 130 €, TU KRĀJ BONUSUS!",
+    "footnote": "*Bonusu var izmantot tikai vienā reizē, izvēloties dāvanu. Ja dāvanas vērtība ir mazāka par uzkrāto bonusu, neizmantotā bonusa daļa tiek dzēsta un netiek pārnesta uz nākamo pirkumu.",
     "loading": "Ielādē…",
     "error_title": "Kaut kas nogājis greizi",
     "retry": "Mēģināt vēlreiz",

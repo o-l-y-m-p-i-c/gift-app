@@ -268,6 +268,7 @@
 
       // ── Build HTML ──
       let html = '<div class="gift-drawer-widget__inner">';
+      html += `<p class="gift-drawer-widget__promo-title">${t("promo_title")}</p>`;
 
       // Summary text
       if (!activeTier) {
@@ -351,6 +352,7 @@
         }
       }
 
+      html += `<p class="gift-drawer-widget__footnote">${t("footnote")}</p>`;
       html += "</div>";
       mountContainer.innerHTML = html;
 

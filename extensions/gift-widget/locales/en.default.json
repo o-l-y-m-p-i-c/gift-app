@@ -1,6 +1,8 @@
 {
   "gift": {
     "title": "Bonus Balance",
+    "promo_title": "NOW WITH EVERY PURCHASE STARTING FROM €130, YOU COLLECT BONUSES!",
+    "footnote": "*Bonus can only be used once, when choosing a gift. If the gift value is less than the accumulated bonus, the unused portion is deleted and not carried over to the next purchase.",
     "loading": "Loading…",
     "error_title": "Something went wrong",
     "retry": "Try again",

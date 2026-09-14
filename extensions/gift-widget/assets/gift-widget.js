@@ -499,6 +499,7 @@
 
       const widgetHtml = `
         <div class="gift-widget">
+          <p class="gift-widget__promo-title">${t("promo_title")}</p>
           <div class="gift-widget__header">
             <span class="gift-widget__icon">💰</span>
             <div>
@@ -509,6 +510,7 @@
           ${progressHtml}
           ${selectedHtml}
           ${selectionHtml}
+          <p class="gift-widget__footnote">${t("footnote")}</p>
         </div>
       `;
 
