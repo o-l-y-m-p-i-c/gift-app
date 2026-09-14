@@ -334,13 +334,8 @@
   function renderError(el, message, retryFn) {
     el.innerHTML = `
       <div class="gift-widget gift-widget--error">
-        <div class="gift-widget__header">
-          <span class="gift-widget__icon">⚠️</span>
-          <div>
-            <h3 class="gift-widget__title">${t("error_title")}</h3>
-            <p class="gift-widget__subtitle">${message}</p>
-          </div>
-        </div>
+        <p class="gift-widget__subtitle">${t("error_title")}</p>
+        <p class="gift-widget__subtitle">${message}</p>
         <button type="button" class="gift-widget__retry" id="gift-widget-retry">${t("retry")}</button>
       </div>
     `;
@@ -471,19 +466,15 @@
 
     if (!activeTier) {
       selectionHtml = `
-        <div class="gift-widget__no-tier">
-          <p class="gift-widget__subtitle">
-            ${t("unlock_more")}
-          </p>
-        </div>
+        <p class="gift-widget__subtitle">
+          ${t("unlock_more")}
+        </p>
       `;
     } else if (remainingBudget <= 0) {
       selectionHtml = `
-        <div class="gift-widget__budget-used">
-          <h2 class="gift-widget__budget-full-title">
-            ${t("budget_full", { amount: G.formatPrice(activeTier.giftAmount) })}
-          </h2>
-        </div>
+        <h2 class="gift-widget__budget-full-title">
+          ${t("budget_full", { amount: G.formatPrice(activeTier.giftAmount) })}
+        </h2>
       `;
     } else {
       const budgetLabel = giftItems.length > 0
@@ -500,13 +491,7 @@
       const widgetHtml = `
         <div class="gift-widget">
           <p class="gift-widget__promo-title">${t("promo_title")}</p>
-          <div class="gift-widget__header">
-            <span class="gift-widget__icon">💰</span>
-            <div>
-              <h3 class="gift-widget__title">${t("title")}</h3>
-              <p class="gift-widget__subtitle">${budgetLabel}</p>
-            </div>
-          </div>
+          <p class="gift-widget__subtitle">${budgetLabel}</p>
           ${progressHtml}
           ${selectedHtml}
           ${selectionHtml}
@@ -552,11 +537,9 @@
       let selectionReplacementHtml;
       if (products.length === 0) {
         selectionReplacementHtml = `
-          <div class="gift-widget__no-products">
-            <p class="gift-widget__subtitle">
-              ${t("no_products", { amount: G.formatPrice(remainingBudget) })}
-            </p>
-          </div>
+          <p class="gift-widget__subtitle">
+            ${t("no_products", { amount: G.formatPrice(remainingBudget) })}
+          </p>
         `;
       } else {
         const productCards = products
@@ -595,18 +578,14 @@
     // Render full widget (no product selection needed) to all containers
     const fullWidgetHtml = `
       <div class="gift-widget">
-        <div class="gift-widget__header">
-          <span class="gift-widget__icon">🎁</span>
-          <div>
-            <h3 class="gift-widget__title">${t("title")}</h3>
-            <p class="gift-widget__subtitle">
-              ${activeTier ? t("budget_label", { amount: G.formatPrice(activeTier.giftAmount) }) : t("unlock_free")}
-            </p>
-          </div>
-        </div>
+        <p class="gift-widget__promo-title">${t("promo_title")}</p>
+        <p class="gift-widget__subtitle">
+          ${activeTier ? t("budget_label", { amount: G.formatPrice(activeTier.giftAmount) }) : t("unlock_free")}
+        </p>
         ${progressHtml}
         ${selectedHtml}
         ${selectionHtml}
+        <p class="gift-widget__footnote">${t("footnote")}</p>
       </div>
     `;
     containers.forEach((el) => { el.innerHTML = fullWidgetHtml; });
