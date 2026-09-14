@@ -527,6 +527,16 @@
   font-size: var(--gift-text-sm);
 }
 
+.gift-widget__budget-full-title {
+  font-family: var(--gift-heading-font);
+  font-weight: var(--gift-heading-weight);
+  font-size: var(--gift-text-lg);
+  text-align: center;
+  margin: 0;
+  color: var(--gift-success, #4caf50);
+  line-height: 1.3;
+}
+
 .gift-widget__footnote {
   margin: 1rem 0 0;
   font-size: 0.6875rem;
@@ -815,8 +825,12 @@
 }
 
 .gift-drawer-widget__budget--full {
-  color: var(--gift-text);
-  font-weight: 600;
+  font-family: var(--gift-heading-font);
+  font-weight: var(--gift-heading-weight);
+  font-size: var(--gift-text-sm);
+  color: var(--gift-success, #4caf50);
+  margin: 0;
+  line-height: 1.3;
 }
 
 .gift-drawer-widget__cta {

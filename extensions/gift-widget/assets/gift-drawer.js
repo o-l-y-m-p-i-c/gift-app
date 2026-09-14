@@ -323,7 +323,7 @@
           html += `<p class="gift-drawer-widget__budget">${usedLabel}</p>`;
         } else if (totalGiftValue > 0 && remainingBudget <= 0) {
           const fullLabel = getSetting("labelFull", "Your bonus balance is fully used");
-          html += `<p class="gift-drawer-widget__budget gift-drawer-widget__budget--full">${fullLabel}</p>`;
+          html += `<h2 class="gift-drawer-widget__budget--full">${fullLabel}</h2>`;
         } else if (showRemaining) {
           html += `<p class="gift-drawer-widget__budget">${t("remaining", { amount: G.formatPrice(remainingBudget) })}</p>`;
         }

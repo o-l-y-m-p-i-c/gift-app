@@ -480,9 +480,9 @@
     } else if (remainingBudget <= 0) {
       selectionHtml = `
         <div class="gift-widget__budget-used">
-          <p class="gift-widget__subtitle">
+          <h2 class="gift-widget__budget-full-title">
             ${t("budget_full", { amount: G.formatPrice(activeTier.giftAmount) })}
-          </p>
+          </h2>
         </div>
       `;
     } else {
