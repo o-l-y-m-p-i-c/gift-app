@@ -472,7 +472,7 @@
       `;
     } else if (remainingBudget <= 0) {
       selectionHtml = `
-        <h2 class="gift-widget__budget-full-title">
+        <h2 class="gift-widget__budget-full-title gift-widget__budget-full-title--success">
           ${t("budget_full", { amount: G.formatPrice(activeTier.giftAmount) })}
         </h2>
       `;
@@ -537,9 +537,9 @@
       let selectionReplacementHtml;
       if (products.length === 0) {
         selectionReplacementHtml = `
-          <p class="gift-widget__subtitle">
+          <h2 class="gift-widget__budget-full-title gift-widget__budget-full-title--muted">
             ${t("no_products", { amount: G.formatPrice(remainingBudget) })}
-          </p>
+          </h2>
         `;
       } else {
         const productCards = products

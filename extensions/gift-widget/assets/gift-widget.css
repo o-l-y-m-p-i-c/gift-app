@@ -503,8 +503,15 @@
   font-size: var(--gift-text-lg);
   text-align: center;
   margin: 0;
-  color: var(--gift-success, #4caf50);
   line-height: 1.3;
+}
+
+.gift-widget__budget-full-title--success {
+  color: var(--gift-success, #4caf50);
+}
+
+.gift-widget__budget-full-title--muted {
+  color: var(--gift-text-muted);
 }
 
 .gift-widget__footnote {
