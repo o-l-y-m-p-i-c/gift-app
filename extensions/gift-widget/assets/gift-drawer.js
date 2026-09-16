@@ -114,6 +114,15 @@
            document.querySelector('cart-drawer [slot="footer"]');
   }
 
+  function findDrawerContent() {
+    // Dawn: cart-drawer .drawer__content / cart-drawer-items
+    // Prestige: cart-drawer .cart-drawer__items / cart-drawer content area
+    return document.querySelector("cart-drawer .drawer__content") ||
+           document.querySelector("cart-drawer .cart-drawer__items") ||
+           document.querySelector("cart-drawer-items") ||
+           document.querySelector("cart-drawer .drawer__body");
+  }
+
   function ensureMounted() {
     // If the mount container already exists in the DOM, keep it
     if (mountContainer && document.contains(mountContainer)) return true;
@@ -121,8 +130,9 @@
     sourceContainer = findSourceContainer();
     if (!sourceContainer) return false;
 
+    const content = findDrawerContent();
     const footer = findDrawerFooter();
-    if (!footer) {
+    if (!content && !footer) {
       // Drawer not present on this page
       return false;
     }
@@ -132,8 +142,13 @@
     mountContainer.className = "gift-drawer-widget";
     mountContainer.setAttribute("data-gift-drawer-mounted", "");
 
-    // Insert before the footer
-    footer.before(mountContainer);
+    // Insert as first child of the drawer content area, so the widget
+    // appears at the top of the drawer, not at the end before the footer
+    if (content) {
+      content.prepend(mountContainer);
+    } else {
+      footer.before(mountContainer);
+    }
 
     // Copy settings from source container
     for (const attr of sourceContainer.attributes) {

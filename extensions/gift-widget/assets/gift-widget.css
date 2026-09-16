@@ -54,6 +54,7 @@
   background: var(--gift-bg);
   font-family: var(--gift-font);
   color: var(--gift-text);
+  text-align: center;
 }
 
 .gift-widget--selected {
@@ -296,8 +297,9 @@
 
 .gift-widget__progress-info {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  gap: 1rem;
   margin-bottom: 0.375rem;
 }
 
@@ -1012,13 +1014,7 @@
   text-align: center;
 }
 
-.gift-widget--step1 .gift-widget__progress-info {
-  justify-content: center;
-}
-
-.gift-widget--step1 .gift-widget__scale-scroll {
-  justify-content: center;
-}
+/* step1 inherits centered styling from base .gift-widget */
 
 .gift-widget__skip-button {
   display: block;
