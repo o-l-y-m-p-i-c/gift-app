@@ -507,15 +507,30 @@
     if (!ensureMounted()) {
       // Drawer might not be in the DOM yet — retry on first cart interaction
       // or when the drawer opens
+      let retryCount = 0;
       const retryInit = () => {
         if (ensureMounted()) {
           setupSectionObserver();
           listenForCartUpdates();
           render();
-          document.removeEventListener("cart:updated", retryInit);
+          window.removeEventListener("cart:updated", retryInit);
+          window.removeEventListener("cart:refresh", retryInit);
+          window.removeEventListener("cart:change", retryInit);
+          window.removeEventListener("ajaxcart:add", retryInit);
+          window.removeEventListener("cart-drawer:open", retryInit);
+          return;
+        }
+        // If still not mounted, retry with increasing delay
+        retryCount++;
+        if (retryCount < 10) {
+          setTimeout(retryInit, 200 * retryCount);
         }
       };
       window.addEventListener("cart:updated", retryInit);
+      window.addEventListener("cart:refresh", retryInit);
+      window.addEventListener("cart:change", retryInit);
+      window.addEventListener("ajaxcart:add", retryInit);
+      window.addEventListener("cart-drawer:open", retryInit);
       // Also try on DOMContentLoaded if it hasn't fired yet
       if (document.readyState !== "loading") {
         setTimeout(() => {
@@ -525,6 +540,20 @@
             render();
           }
         }, 500);
+      }
+      // Also observe the body for cart-drawer being added to the DOM
+      if (typeof MutationObserver !== "undefined") {
+        const bodyObserver = new MutationObserver(() => {
+          if (ensureMounted()) {
+            bodyObserver.disconnect();
+            setupSectionObserver();
+            listenForCartUpdates();
+            render();
+          }
+        });
+        bodyObserver.observe(document.body, { childList: true, subtree: false });
+        // Stop observing after 30 seconds to avoid leaks
+        setTimeout(() => bodyObserver.disconnect(), 30000);
       }
       return;
     }

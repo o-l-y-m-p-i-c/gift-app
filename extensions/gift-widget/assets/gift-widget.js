@@ -69,6 +69,8 @@
   }
 
   function setCachedProducts(maxPrice, products) {
+    // Don't cache empty arrays — allows re-fetching if API had a temporary issue
+    if (!products || products.length === 0) return;
     try {
       const key = PRODUCTS_CACHE_PREFIX + maxPrice;
       sessionStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), products }));
@@ -646,10 +648,11 @@
       );
 
       // Check sessionStorage cache first
-      let products = getCachedProducts(remainingBudget);
-      if (products) {
+      let cachedProducts = getCachedProducts(remainingBudget);
+      let products = null;
+      if (cachedProducts && cachedProducts.length > 0) {
         // Filter out excluded variants from cached results
-        products = products.filter((p) => !excludeIds.has(String(p.variantId)));
+        products = cachedProducts.filter((p) => !excludeIds.has(String(p.variantId)));
       }
 
       if (!products) {
