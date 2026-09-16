@@ -46,6 +46,82 @@
   let isRefreshingSection = false;
   let isSelectingGift = false;
   let removingGiftKey = null;
+  let productsLoading = false;
+
+  // ─── sessionStorage caching for gift products ─────────────
+  const PRODUCTS_CACHE_PREFIX = "giftProducts_";
+  const PRODUCTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  function getCachedProducts(maxPrice) {
+    try {
+      const key = PRODUCTS_CACHE_PREFIX + maxPrice;
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (Date.now() - entry.timestamp > PRODUCTS_CACHE_TTL) {
+        sessionStorage.removeItem(key);
+        return null;
+      }
+      return entry.products;
+    } catch {
+      return null;
+    }
+  }
+
+  function setCachedProducts(maxPrice, products) {
+    try {
+      const key = PRODUCTS_CACHE_PREFIX + maxPrice;
+      sessionStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), products }));
+    } catch {
+      // sessionStorage might be full or unavailable
+    }
+  }
+
+  // ─── Step-by-step cart logic ──────────────────────────────
+  // Step 1: Bonus balance available + no gift selected → show ONLY gift widget
+  // Step 2: Gift already selected OR no bonus → show main cart content
+
+  function getMainCartSections() {
+    // Prestige: section.shopify-section--main-cart
+    // Dawn: section[id*="main-cart"], section[id*="cart-items"]
+    const sections = document.querySelectorAll(
+      'section.shopify-section--main-cart, ' +
+      'section[id*="shopify-section"][id*="main-cart"], ' +
+      'section[id*="shopify-section"][id*="cart-items"]:not([id*="apps"])'
+    );
+    // Filter out the apps section (which contains the gift widget)
+    return [...sections].filter(
+      (s) => !s.classList.contains("shopify-section--apps") &&
+             !s.id.includes("__1789037310479ced67") &&
+             !s.querySelector("#gift-widget-container")
+    );
+  }
+
+  function toggleCartStep(state) {
+    const mainCartSections = getMainCartSections();
+    const showStep1 =
+      state.activeTier &&
+      state.remainingBudget > 0 &&
+      state.giftSelectionCount === 0;
+
+    mainCartSections.forEach((section) => {
+      if (showStep1) {
+        section.style.display = "none";
+      } else {
+        section.style.display = "";
+      }
+    });
+
+    // Add/remove a class on the gift widget container for step-1 styling
+    const containers = getContainers();
+    containers.forEach((container) => {
+      if (showStep1) {
+        container.classList.add("gift-widget-container--step1");
+      } else {
+        container.classList.remove("gift-widget-container--step1");
+      }
+    });
+  }
 
   // ─── Translations ──────────────────────────────────────────
 
@@ -279,6 +355,7 @@
 
     if (state.giftSelectionCount > 0 && state.freeGiftQuantity !== state.giftSelectionCount) {
       await removeAllGifts(cart);
+      toggleCartStep(G.computeCartState(await G.fetchCart()));
       if (settings.showRemovalNotification) {
         showNotification(t("notif_removed_discount"), "warning");
       }
@@ -317,7 +394,11 @@
       cart = await G.fetchCart();
     }
 
-    await renderWidget(cart, activeTier, nextTier, thresholdBase);
+    // Recompute state after potential gift removals
+    const updatedState = G.computeCartState(cart);
+    toggleCartStep(updatedState);
+
+    await renderWidget(cart, updatedState.activeTier, updatedState.nextTier, updatedState.thresholdBase);
   }
 
   // ─── Rendering ─────────────────────────────────────────────
@@ -481,26 +562,58 @@
         ? t("remaining", { amount: G.formatPrice(remainingBudget) })
         : t("choose_up_to", { amount: G.formatPrice(activeTier.giftAmount) });
 
-      selectionHtml = `
-        <div class="gift-widget__selection-loading">
-          <div class="gift-widget__spinner"></div>
-          <p class="gift-widget__subtitle">${t("loading")}</p>
+      // Show skeleton placeholder cards immediately (prevents layout jump)
+      const skeletonCards = Array.from({ length: 5 }, () => `
+        <div class="gift-widget__card gift-widget__card--skeleton">
+          <div class="gift-widget__skeleton-image"></div>
+          <div class="gift-widget__info">
+            <div class="gift-widget__skeleton-line gift-widget__skeleton-line--name"></div>
+            <div class="gift-widget__skeleton-line gift-widget__skeleton-line--price"></div>
+          </div>
+          <div class="gift-widget__skeleton-button"></div>
         </div>
+      `).join("");
+
+      selectionHtml = `
+        <div class="gift-widget__carousel gift-widget__carousel--loading">${skeletonCards}</div>
       `;
 
+      const isStep1 = activeTier && remainingBudget > 0 && giftItems.length === 0;
+      const skipButtonHtml = isStep1 ? `
+        <button type="button" class="gift-widget__skip-button" id="gift-widget-skip">
+          ${t("skip_step")}
+        </button>
+      ` : "";
+
       const widgetHtml = `
-        <div class="gift-widget">
+        <div class="gift-widget${isStep1 ? " gift-widget--step1" : ""}">
           <p class="gift-widget__promo-title">${t("promo_title")}</p>
           <p class="gift-widget__subtitle">${budgetLabel}</p>
           ${progressHtml}
           ${selectedHtml}
           ${selectionHtml}
           <p class="gift-widget__footnote">${t("footnote")}</p>
+          ${skipButtonHtml}
         </div>
       `;
 
       // Render to all containers
       containers.forEach((el) => { el.innerHTML = widgetHtml; });
+
+      // Attach skip button handler
+      containers.forEach((el) => {
+        const skipBtn = el.querySelector("#gift-widget-skip");
+        if (skipBtn) {
+          skipBtn.addEventListener("click", () => {
+            const sections = getMainCartSections();
+            sections.forEach((s) => { s.style.display = ""; });
+            el.classList.remove("gift-widget-container--step1");
+            el.querySelector(".gift-widget")?.classList.remove("gift-widget--step1");
+            // Scroll to cart content
+            sections[0]?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        }
+      });
 
       // Auto-scroll scale to current position
       scrollScaleToCurrent(containers, allTiers, thresholdBase, STEP_WIDTH);
@@ -511,25 +624,39 @@
           .map((item) => String(item.variant_id)),
       );
 
-      let products;
-      try {
-        products = await fetchGiftProducts(remainingBudget, excludeIds);
-      } catch (e) {
-        console.error("[Gift Widget] Failed to fetch products:", e);
-        containers.forEach((el) => {
-          const selectionEl = el.querySelector(".gift-widget__selection-loading");
-          if (selectionEl) {
-            selectionEl.innerHTML = `
-              <p class="gift-widget__subtitle">${t("unable_load")}</p>
-              <button type="button" class="gift-widget__retry">${t("retry")}</button>
-            `;
-            const retryBtn = selectionEl.querySelector(".gift-widget__retry");
-            if (retryBtn) {
-              retryBtn.addEventListener("click", () => renderWidget(cart, activeTier, nextTier, thresholdBase));
+      // Check sessionStorage cache first
+      let products = getCachedProducts(remainingBudget);
+      if (products) {
+        // Filter out excluded variants from cached results
+        products = products.filter((p) => !excludeIds.has(String(p.variantId)));
+      }
+
+      if (!products) {
+        productsLoading = true;
+        try {
+          products = await fetchGiftProducts(remainingBudget, excludeIds);
+          setCachedProducts(remainingBudget, products);
+        } catch (e) {
+          console.error("[Gift Widget] Failed to fetch products:", e);
+          containers.forEach((el) => {
+            const carousel = el.querySelector(".gift-widget__carousel--loading");
+            if (carousel) {
+              carousel.outerHTML = `
+                <div class="gift-widget__selection-loading">
+                  <p class="gift-widget__subtitle">${t("unable_load")}</p>
+                  <button type="button" class="gift-widget__retry">${t("retry")}</button>
+                </div>
+              `;
+              const retryBtn = el.querySelector(".gift-widget__retry");
+              if (retryBtn) {
+                retryBtn.addEventListener("click", () => renderWidget(cart, activeTier, nextTier, thresholdBase));
+              }
             }
-          }
-        });
-        return;
+          });
+          productsLoading = false;
+          return;
+        }
+        productsLoading = false;
       }
       giftProducts = products;
 
@@ -566,9 +693,9 @@
       }
 
       containers.forEach((el) => {
-        const selectionContainer = el.querySelector(".gift-widget__selection-loading");
-        if (selectionContainer) {
-          selectionContainer.outerHTML = selectionReplacementHtml;
+        const loadingCarousel = el.querySelector(".gift-widget__carousel--loading");
+        if (loadingCarousel) {
+          loadingCarousel.outerHTML = selectionReplacementHtml;
         }
       });
 

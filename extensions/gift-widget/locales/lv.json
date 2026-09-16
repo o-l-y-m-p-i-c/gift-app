@@ -19,6 +19,7 @@
     "remaining": "atlicis {{ amount }}",
     "budget_label": "Bilance: {{ amount }}",
     "unlock_free": "Atbloķēt bonusa bilanci",
+    "skip_step": "Izlaist un doties uz grozu",
     "drawer": {
       "cta_choose": "Izvēlieties preces",
       "cta_more": "Izvēlieties vēl preces",

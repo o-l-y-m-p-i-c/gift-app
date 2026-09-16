@@ -19,6 +19,7 @@
     "remaining": "{{ amount }} осталось",
     "budget_label": "Баланс: {{ amount }}",
     "unlock_free": "Разблокировать бонусный баланс",
+    "skip_step": "Пропустить и перейти к корзине",
     "drawer": {
       "cta_choose": "Выбрать товары",
       "cta_more": "Выбрать ещё товары",

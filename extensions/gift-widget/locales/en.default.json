@@ -19,6 +19,7 @@
     "remaining": "{{ amount }} remaining",
     "budget_label": "Balance: {{ amount }}",
     "unlock_free": "Unlock bonus balance",
+    "skip_step": "Skip and go to cart",
     "drawer": {
       "cta_choose": "Choose your products",
       "cta_more": "Choose more products",
