@@ -994,6 +994,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  max-width: var(--container-sm-max-width, 36rem);
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 
 .gift-widget-container--step1 .gift-widget {
@@ -1035,4 +1039,96 @@
 .gift-widget__skip-button:hover {
   background: rgb(var(--text-color, 28 28 28) / 0.04);
   color: var(--gift-text);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Compact widget — shown when no bonus unlocked (empty cart / low balance)
+   ═══════════════════════════════════════════════════════════════ */
+
+.gift-widget--compact {
+  padding: 1rem 1.25rem;
+  text-align: center;
+}
+
+.gift-widget--compact .gift-widget__promo-title {
+  margin-bottom: 0.5rem;
+}
+
+.gift-widget--compact .gift-widget__subtitle {
+  margin-bottom: 0.5rem;
+}
+
+.gift-widget--compact .gift-widget__footnote {
+  margin-top: 0.5rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Friendly loading skeleton — initial page load
+   ═══════════════════════════════════════════════════════════════ */
+
+.gift-widget--loading {
+  padding: 1.25rem;
+}
+
+.gift-widget__skeleton-line--title {
+  height: 0.875rem;
+  width: 60%;
+  margin: 0 auto 0.75rem;
+  border-radius: 0.25rem;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--text-color, 28 28 28) / 0.06) 25%,
+    rgb(var(--text-color, 28 28 28) / 0.12) 50%,
+    rgb(var(--text-color, 28 28 28) / 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: gift-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.gift-widget__skeleton-line--subtitle {
+  height: 0.75rem;
+  width: 40%;
+  margin: 0 auto 1rem;
+  border-radius: 0.25rem;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--text-color, 28 28 28) / 0.06) 25%,
+    rgb(var(--text-color, 28 28 28) / 0.12) 50%,
+    rgb(var(--text-color, 28 28 28) / 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: gift-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.gift-widget__skeleton-line--scale {
+  height: 3rem;
+  width: 100%;
+  border-radius: var(--gift-radius-sm);
+  background: linear-gradient(
+    90deg,
+    rgb(var(--text-color, 28 28 28) / 0.06) 25%,
+    rgb(var(--text-color, 28 28 28) / 0.12) 50%,
+    rgb(var(--text-color, 28 28 28) / 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: gift-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.gift-widget__loading-scale {
+  margin-bottom: 1rem;
+}
+
+.gift-widget__skeleton-line--text {
+  height: 0.625rem;
+  width: 80%;
+  margin: 0 auto;
+  border-radius: 0.25rem;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--text-color, 28 28 28) / 0.06) 25%,
+    rgb(var(--text-color, 28 28 28) / 0.12) 50%,
+    rgb(var(--text-color, 28 28 28) / 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: gift-skeleton-shimmer 1.5s ease-in-out infinite;
 }

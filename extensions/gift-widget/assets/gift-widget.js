@@ -406,8 +406,12 @@
   function renderLoading(el) {
     el.innerHTML = `
       <div class="gift-widget gift-widget--loading">
-        <div class="gift-widget__spinner"></div>
-        <p class="gift-widget__subtitle">${t("loading")}</p>
+        <div class="gift-widget__skeleton-line gift-widget__skeleton-line--title"></div>
+        <div class="gift-widget__skeleton-line gift-widget__skeleton-line--subtitle"></div>
+        <div class="gift-widget__loading-scale">
+          <div class="gift-widget__skeleton-line gift-widget__skeleton-line--scale"></div>
+        </div>
+        <div class="gift-widget__skeleton-line gift-widget__skeleton-line--text"></div>
       </div>
     `;
   }
@@ -703,6 +707,22 @@
     }
 
     // Render full widget (no product selection needed) to all containers
+    if (!activeTier) {
+      // Compact/short variant: no bonus unlocked yet
+      const amountToFirst = allTiers.length > 0 ? allTiers[0].minAmount - thresholdBase : 0;
+      const compactHtml = `
+        <div class="gift-widget gift-widget--compact">
+          <p class="gift-widget__promo-title">${t("promo_title")}</p>
+          <p class="gift-widget__subtitle">
+            ${allTiers.length > 0 ? t("to_unlock_first", { amount: G.formatPrice(amountToFirst) }) : t("unlock_more")}
+          </p>
+          <p class="gift-widget__footnote">${t("footnote")}</p>
+        </div>
+      `;
+      containers.forEach((el) => { el.innerHTML = compactHtml; });
+      return;
+    }
+
     const fullWidgetHtml = `
       <div class="gift-widget">
         <p class="gift-widget__promo-title">${t("promo_title")}</p>
