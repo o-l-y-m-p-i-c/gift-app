@@ -46,8 +46,9 @@
 /* ─── Cart page widget ─────────────────────────────────────── */
 
 .gift-widget {
-  margin: 1rem 0;
+  margin: 1rem auto;
   padding: 1.25rem;
+  max-width: var(--container-sm-max-width, 36rem);
   border: 1px solid var(--gift-border);
   border-radius: var(--gift-radius);
   background: var(--gift-bg);
@@ -1002,7 +1003,7 @@
 }
 
 .gift-widget-container--step1 .gift-widget {
-  max-width: 600px;
+  max-width: var(--container-sm-max-width, 36rem);
   margin: 2rem auto;
   padding: 2rem 1.5rem;
 }
@@ -1048,6 +1049,8 @@
 
 .gift-widget--compact {
   padding: 1rem 1.25rem;
+  max-width: var(--container-sm-max-width, 36rem);
+  margin: 1rem auto;
   text-align: center;
 }
 
