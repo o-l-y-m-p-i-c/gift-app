@@ -123,6 +123,18 @@
     });
   }
 
+  // Instantly transition to step 2 without waiting for cart refresh.
+  // Used by selectGift/removeGift to avoid a jarring flash during the
+  // async section refresh.
+  function forceStep2() {
+    const mainCartSections = getMainCartSections();
+    mainCartSections.forEach((section) => { section.style.display = ""; });
+    const containers = getContainers();
+    containers.forEach((container) => {
+      container.classList.remove("gift-widget-container--step1");
+    });
+  }
+
   // ─── Translations ──────────────────────────────────────────
 
   let _translations = null;
@@ -178,7 +190,12 @@
     const containers = getContainers();
     if (containers.length === 0) return;
 
-    containers.forEach((el) => renderLoading(el));
+    // Only show loading skeleton on initial page load (empty container),
+    // not during refreshes — avoids flashing skeleton on step transitions
+    const isInitialLoad = containers[0].children.length === 0;
+    if (isInitialLoad) {
+      containers.forEach((el) => renderLoading(el));
+    }
 
     try {
       await G.ensureConfig();
@@ -824,6 +841,9 @@
       if (!result.ok) {
         throw new Error(result.error || "Unable to add this gift.");
       }
+      // Immediately transition to step 2 (show cart) before the async
+      // section refresh, so the user sees the cart appear smoothly
+      forceStep2();
       await refreshCartSection();
     } catch (e) {
       console.error("[Gift Widget] Failed to add gift:", e);

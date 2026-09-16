@@ -998,6 +998,7 @@
   margin-left: auto;
   margin-right: auto;
   width: 100%;
+  transition: min-height 0.3s ease, max-width 0.3s ease;
 }
 
 .gift-widget-container--step1 .gift-widget {
