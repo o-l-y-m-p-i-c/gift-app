@@ -37,7 +37,7 @@ export default function Index() {
               </BlockStack>
             </Card>
 
-            <Grid columns={{ xs: 1, sm: 2, md: 3 }}>
+            <Grid columns={{ xs: 1, sm: 2, md: 3, lg: 3, xl: 3 }}>
               <Grid.Cell>
                 <Card>
                   <BlockStack gap="300">
