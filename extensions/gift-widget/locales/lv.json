@@ -23,7 +23,7 @@
     "drawer": {
       "cta_choose": "Izvēlieties preces",
       "cta_more": "Izvēlieties vēl preces",
-      "cta_manage": "Pārvaldīt izvēli",
+      "cta_manage": "Apskatīt izvēlētās preces",
       "label_unlock": "Pievienojiet vēl {{ amount }}, lai atbloķētu bonusa bilanci",
       "label_unlocked": "Atbloķēta {{ budget }} bonusa bilance",
       "label_used": "Izlietots {{ amount }} · atlicis {{ remaining }}",
