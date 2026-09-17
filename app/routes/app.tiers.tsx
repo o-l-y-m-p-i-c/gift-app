@@ -237,7 +237,7 @@ export default function TiersPage() {
               value={newMinAmount}
               onChange={setNewMinAmount}
               autoComplete="off"
-              placeholder="e.g., 130"
+              placeholder="e.g., 360"
               helpText="Cart total threshold in euros"
             />
             <TextField
