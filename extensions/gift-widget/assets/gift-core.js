@@ -429,22 +429,41 @@
         .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
         .map((d) => d.code);
       const discountStr = [...nonGiftCodes, codeData.code].join(",");
-      const updateResponse = await fetch("/cart/update.js", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          discount: discountStr,
-          sections: cartSectionIds().join(","),
-          sections_url: window.location.pathname,
-        }),
-      });
-      const updateData = await updateResponse.json().catch(() => ({}));
-      if (!updateResponse.ok) {
+      const applyDiscount = async () => {
+        const res = await fetch("/cart/update.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            discount: discountStr,
+            sections: cartSectionIds().join(","),
+            sections_url: window.location.pathname,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, data };
+      };
+
+      const findGiftCode = (cartData) =>
+        (cartData.discount_codes || []).find((d) => d.code === codeData.code);
+
+      let { ok, data: updateData } = await applyDiscount();
+      if (!ok) {
         throw new Error(updateData.description || "Unable to apply the gift discount.");
       }
 
+      // A just-created discount code can lag a moment before it is
+      // redeemable on the storefront — retry the application briefly.
+      let giftCode = findGiftCode(updateData);
+      for (let attempt = 0; !giftCode?.applicable && attempt < 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 1200));
+        const retry = await applyDiscount();
+        if (retry.ok) {
+          updateData = retry.data;
+          giftCode = findGiftCode(updateData);
+        }
+      }
+
       // 4. Verify the gift is fully free
-      const giftCode = (updateData.discount_codes || []).find((d) => d.code === codeData.code);
       if (!giftCode?.applicable) {
         console.warn("[gift-core] gift code not applicable:", JSON.stringify({
           sent: discountStr,
