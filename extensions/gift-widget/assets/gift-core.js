@@ -432,7 +432,11 @@
       const updateResponse = await fetch("/cart/update.js", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ discount: discountStr }),
+        body: JSON.stringify({
+          discount: discountStr,
+          sections: cartSectionIds().join(","),
+          sections_url: window.location.pathname,
+        }),
       });
       const updateData = await updateResponse.json().catch(() => ({}));
       if (!updateResponse.ok) {
@@ -441,8 +445,27 @@
 
       // 4. Verify the gift is fully free
       const giftCode = (updateData.discount_codes || []).find((d) => d.code === codeData.code);
+      if (!giftCode?.applicable) {
+        console.warn("[gift-core] gift code not applicable:", {
+          code: codeData.code,
+          discount_codes: updateData.discount_codes,
+          item_count: updateData.item_count,
+        });
+        throw new Error("The gift discount could not be applied to this cart.");
+      }
       const freeGiftQuantity = getFreeGiftQuantity(updateData);
-      if (!giftCode?.applicable || freeGiftQuantity !== allGiftVariantIds.length) {
+      if (freeGiftQuantity !== allGiftVariantIds.length) {
+        console.warn("[gift-core] gift not fully free:", {
+          expected: allGiftVariantIds.length,
+          free: freeGiftQuantity,
+          items: (updateData.items || []).map((i) => ({
+            key: i.key,
+            qty: i.quantity,
+            orig: i.original_line_price,
+            final: i.final_line_price,
+            gift: !!i.properties?.[GIFT_PROPERTY_KEY],
+          })),
+        });
         throw new Error("The selected gift could not be made fully free.");
       }
 
@@ -599,6 +622,24 @@
    * and swapped into the DOM.
    */
   async function refreshDawnSections(cart) {
+    // Prefer rendered sections already attached to the cart payload —
+    // keyed by the real section ids (handles embedded
+    // "sections--{theme}__{name}" sections that bare-name fetches miss).
+    if (cart?.sections && typeof cart.sections === "object") {
+      for (const [key, html] of Object.entries(cart.sections)) {
+        if (typeof html !== "string" || !html) continue;
+        try {
+          const wrapper = document.getElementById(`shopify-section-${key}`);
+          if (!wrapper) continue;
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const fresh = doc.querySelector('[id^="shopify-section-"]') || doc.body;
+          wrapper.innerHTML = fresh.innerHTML;
+        } catch (e) {
+          console.warn("[gift-core] Section swap failed for", key, e);
+        }
+      }
+    }
+
     // Cart icon bubble (header cart count)
     try {
       const bubble = document.getElementById("cart-icon-bubble");
