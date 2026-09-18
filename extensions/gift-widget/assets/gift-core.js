@@ -446,11 +446,17 @@
       // 4. Verify the gift is fully free
       const giftCode = (updateData.discount_codes || []).find((d) => d.code === codeData.code);
       if (!giftCode?.applicable) {
-        console.warn("[gift-core] gift code not applicable:", {
-          code: codeData.code,
-          discount_codes: updateData.discount_codes,
-          item_count: updateData.item_count,
-        });
+        console.warn("[gift-core] gift code not applicable:", JSON.stringify({
+          sent: discountStr,
+          giftCode: codeData.code,
+          codes: (updateData.discount_codes || []).map((d) => ({
+            code: d.code,
+            applicable: d.applicable,
+            reason: d.reason || d.non_applicable_reason || null,
+            discount: d.total_calculated_discount,
+          })),
+          nonGiftCount: qualifyingVariantIds.length,
+        }));
         throw new Error("The gift discount could not be applied to this cart.");
       }
       const freeGiftQuantity = getFreeGiftQuantity(updateData);
@@ -618,6 +624,13 @@
       const id = sec?.id?.replace("shopify-section-", "");
       if (id) ids.add(id);
     }
+    // Sweep any cart-related section wrappers the markers missed
+    // (embedded "sections--{theme}__{name}" sections, drawer outside
+    // its marker, icon bubble inside the header section, etc.)
+    document.querySelectorAll('[id^="shopify-section-"]').forEach((el) => {
+      const id = el.id.replace("shopify-section-", "");
+      if (/cart|drawer|icon-bubble|live-region/i.test(id)) ids.add(id);
+    });
     return [...ids];
   }
 
@@ -625,16 +638,23 @@
   async function fetchCartSections() {
     const ids = cartSectionIds();
     if (!ids.length) return {};
-    try {
-      const res = await fetch(
-        `/cart?sections=${ids.map(encodeURIComponent).join(",")}`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!res.ok) return {};
-      return (await res.json()) || {};
-    } catch (e) {
-      return {};
-    }
+    const sections = {};
+    // GET /cart?sections= returns plain cart JSON — the rendered
+    // section HTML (with the shopify-section-* wrapper the theme's
+    // listeners expect) only comes from ?section_id= per section.
+    await Promise.all(ids.map(async (id) => {
+      try {
+        const res = await fetch(
+          `/cart?section_id=${encodeURIComponent(id)}`,
+          { headers: { Accept: "text/html" } },
+        );
+        if (res.ok) {
+          const html = await res.text();
+          if (html) sections[id] = html;
+        }
+      } catch (e) { /* ignore */ }
+    }));
+    return sections;
   }
 
   function dispatchCartUpdated(cart) {
