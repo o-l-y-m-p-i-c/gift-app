@@ -603,16 +603,66 @@
 
   // ─── Cart update dispatch ───────────────────────────────────
 
-  function dispatchCartUpdated(cart) {
-    const detail = { cart };
-    document.dispatchEvent(new CustomEvent("cart:refresh", { detail }));
-    document.dispatchEvent(new CustomEvent("cart:updated", { detail }));
-    document.dispatchEvent(new CustomEvent("cart:change", { detail }));
-    for (const cb of cartUpdateSubscribers) {
-      try { cb(cart); } catch (e) { console.warn("[gift-core] subscriber error:", e); }
+  /**
+   * Section ids the theme's cart listeners look up on
+   * event.detail.cart.sections — resolved from the DOM (full
+   * "sections--{theme}__{name}" ids for embedded sections, plain
+   * names for standalone section files).
+   */
+  function cartSectionIds() {
+    const ids = new Set(["cart-drawer", "cart-icon-bubble", "cart-live-region-text"]);
+    const markers = ["cart-drawer", "cart-items", "cart-notification", "#main-cart-footer"];
+    for (const sel of markers) {
+      const el = document.querySelector(sel);
+      const sec = el?.closest('[id^="shopify-section-"]');
+      const id = sec?.id?.replace("shopify-section-", "");
+      if (id) ids.add(id);
     }
-    // Refresh Dawn storefront sections (cart drawer + cart icon bubble)
-    refreshDawnSections(cart);
+    return [...ids];
+  }
+
+  /** Fetch rendered section HTML keyed by section id. */
+  async function fetchCartSections() {
+    const ids = cartSectionIds();
+    if (!ids.length) return {};
+    try {
+      const res = await fetch(
+        `/cart?sections=${ids.map(encodeURIComponent).join(",")}`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!res.ok) return {};
+      return (await res.json()) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function dispatchCartUpdated(cart) {
+    const finish = (c) => {
+      const detail = { cart: c };
+      document.dispatchEvent(new CustomEvent("cart:refresh", { detail }));
+      document.dispatchEvent(new CustomEvent("cart:updated", { detail }));
+      document.dispatchEvent(new CustomEvent("cart:change", { detail }));
+      for (const cb of cartUpdateSubscribers) {
+        try { cb(c); } catch (e) { console.warn("[gift-core] subscriber error:", e); }
+      }
+      // Refresh Dawn storefront sections (cart drawer + cart icon bubble)
+      refreshDawnSections(c);
+    };
+
+    // Dawn listeners read event.detail.cart.sections[sectionId] — a
+    // plain /cart.js payload has no sections and crashes them, so
+    // attach a rendered-sections map before dispatching.
+    if (cart && cart.sections == null) {
+      fetchCartSections()
+        .catch(() => ({}))
+        .then((sections) => {
+          cart.sections = sections || {};
+          finish(cart);
+        });
+      return;
+    }
+    finish(cart);
   }
 
   /**
