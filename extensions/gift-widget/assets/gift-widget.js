@@ -596,7 +596,11 @@
               class="gift-widget__selected-remove"
               onclick="window.giftWidget.removeGift('${item.key}')"
               ${removingGiftKey === item.key ? "disabled" : ""}>
-              <span class="gift-widget__remove-label">✕</span>
+              <span class="gift-widget__remove-label" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+                </svg>
+              </span>
               ${removingGiftKey === item.key ? '<span class="gift-widget__remove-spinner"></span>' : ""}
             </button>
           </div>
@@ -736,11 +740,7 @@
       // Update selection section in all containers
       let selectionReplacementHtml;
       if (products.length === 0) {
-        selectionReplacementHtml = `
-          <h2 class="gift-widget__budget-full-title gift-widget__budget-full-title--muted">
-            ${t("no_products", { amount: G.formatPrice(remainingBudget) })}
-          </h2>
-        `;
+        selectionReplacementHtml = "";
       } else {
         const productCards = products
           .map(
