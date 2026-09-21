@@ -21,6 +21,10 @@
     "unlock_free": "Atbloķēt bonusa bilanci",
     "skip_step": "Izlaist un doties uz grozu",
     "promo_conflict": "Dāvanu nevar apvienot ar atlaides kodu {{ code }}. Noņemiet šo kodu vai lūdziet veikalam iespējot kombinēšanu ar produktu atlaidēm.",
+    "promo_choice_title": "Izvēlieties piedāvājumu",
+    "promo_choice_message": "Atlaides kods {{ code }} jau ir piemērots. Aktivizējot bezmaksas dāvanu, tas tiks aizstāts. Kuru piedāvājumu vēlaties izmantot?",
+    "promo_keep": "Saglabāt {{ code }}",
+    "promo_use_gift": "Izmantot bezmaksas dāvanu",
     "drawer": {
       "cta_choose": "Izvēlieties preces",
       "cta_more": "Izvēlieties vēl preces",

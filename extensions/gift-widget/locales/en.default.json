@@ -21,6 +21,10 @@
     "unlock_free": "Unlock bonus balance",
     "skip_step": "Skip and go to cart",
     "promo_conflict": "The gift cannot be combined with discount code {{ code }}. Remove that code or ask the store to enable combinations with product discounts.",
+    "promo_choice_title": "Choose your offer",
+    "promo_choice_message": "Discount code {{ code }} is already applied. Activating the free gift will replace it. Which offer would you like to use?",
+    "promo_keep": "Keep {{ code }}",
+    "promo_use_gift": "Use free gift",
     "drawer": {
       "cta_choose": "Choose your products",
       "cta_more": "Choose more products",

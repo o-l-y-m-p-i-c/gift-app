@@ -270,7 +270,24 @@
         throw new Error(eligibility.reason || "not eligible");
       }
 
-      const result = await G.addGift(currentVariantId, eligibility.tierId);
+      let result = await G.addGift(currentVariantId, eligibility.tierId);
+      if (result.code === "PROMO_CHOICE_REQUIRED") {
+        const codeLabel = (result.discountCodes || []).join(", ");
+        const useGift = await G.requestPromoChoice({
+          title: t("promo_choice_title"),
+          message: t("promo_choice_message", { code: codeLabel }),
+          keepLabel: t("promo_keep", { code: codeLabel }),
+          useGiftLabel: t("promo_use_gift"),
+        });
+        if (!useGift) {
+          setButtonState({
+            label: getLabel("buttonLabel") || "Add as bonus",
+            disabled: false,
+          });
+          return;
+        }
+        result = await G.addGift(currentVariantId, eligibility.tierId, { replaceExternalDiscounts: true });
+      }
       if (!result.ok) {
         throw new Error(result.error || "Unable to add.");
       }

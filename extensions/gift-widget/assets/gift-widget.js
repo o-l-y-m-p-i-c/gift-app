@@ -887,9 +887,29 @@
     const clickedSpinner = clickedBtn?.querySelector(".gift-widget__select-spinner");
     if (clickedLabel) clickedLabel.style.display = "none";
     if (clickedSpinner) clickedSpinner.style.display = "inline-block";
+    const restoreSelection = () => {
+      allButtons.forEach((btn) => { btn.disabled = false; });
+      if (clickedLabel) clickedLabel.style.display = "";
+      if (clickedSpinner) clickedSpinner.style.display = "none";
+    };
 
     try {
-      const result = await G.addGift(variantId, tierId);
+      let result = await G.addGift(variantId, tierId);
+      if (result.code === "PROMO_CHOICE_REQUIRED") {
+        const codes = result.discountCodes || [];
+        const codeLabel = codes.join(", ");
+        const useGift = await G.requestPromoChoice({
+          title: t("promo_choice_title"),
+          message: t("promo_choice_message", { code: codeLabel }),
+          keepLabel: t("promo_keep", { code: codeLabel }),
+          useGiftLabel: t("promo_use_gift"),
+        });
+        if (!useGift) {
+          restoreSelection();
+          return;
+        }
+        result = await G.addGift(variantId, tierId, { replaceExternalDiscounts: true });
+      }
       if (!result.ok) {
         const error = new Error(result.error || "Unable to add this gift.");
         error.result = result;
@@ -908,9 +928,7 @@
       showWidgetError(message);
       showNotification(message, "warning");
 
-      allButtons.forEach((btn) => { btn.disabled = false; });
-      if (clickedLabel) clickedLabel.style.display = "";
-      if (clickedSpinner) clickedSpinner.style.display = "none";
+      restoreSelection();
     } finally {
       isSelectingGift = false;
     }

@@ -94,6 +94,17 @@
     }
   }
 
+  function getExternalDiscountCodes(cart) {
+    return (cart?.discount_codes || [])
+      .filter((discount) =>
+        discount.applicable !== false &&
+        discount.code &&
+        !discount.code.startsWith("BONUS-") &&
+        !discount.code.startsWith("GIFT-"),
+      )
+      .map((discount) => discount.code);
+  }
+
   function getGiftItems(cart) {
     return cart.items.filter(
       (item) => item.properties && item.properties[GIFT_PROPERTY_KEY] === GIFT_PROPERTY_VALUE,
@@ -360,7 +371,48 @@
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-  async function addGift(variantId, tierId) {
+  function requestPromoChoice({ title, message, keepLabel, useGiftLabel }) {
+    document.querySelector(".gift-promo-choice")?.remove();
+    const overlay = document.createElement("div");
+    overlay.className = "gift-promo-choice";
+    overlay.innerHTML = `
+      <div class="gift-promo-choice__dialog" role="dialog" aria-modal="true" aria-labelledby="gift-promo-choice-title">
+        <h2 class="gift-promo-choice__title" id="gift-promo-choice-title"></h2>
+        <p class="gift-promo-choice__message"></p>
+        <div class="gift-promo-choice__actions">
+          <button type="button" class="gift-promo-choice__button gift-promo-choice__button--keep"></button>
+          <button type="button" class="gift-promo-choice__button gift-promo-choice__button--gift"></button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector(".gift-promo-choice__title").textContent = title;
+    overlay.querySelector(".gift-promo-choice__message").textContent = message;
+    const keepButton = overlay.querySelector(".gift-promo-choice__button--keep");
+    const giftButton = overlay.querySelector(".gift-promo-choice__button--gift");
+    keepButton.textContent = keepLabel;
+    giftButton.textContent = useGiftLabel;
+    document.body.appendChild(overlay);
+
+    return new Promise((resolve) => {
+      const finish = (useGift) => {
+        document.removeEventListener("keydown", onKeydown);
+        overlay.remove();
+        resolve(useGift);
+      };
+      const onKeydown = (event) => {
+        if (event.key === "Escape") finish(false);
+      };
+      keepButton.addEventListener("click", () => finish(false));
+      giftButton.addEventListener("click", () => finish(true));
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) finish(false);
+      });
+      document.addEventListener("keydown", onKeydown);
+      keepButton.focus();
+    });
+  }
+
+  async function addGift(variantId, tierId, options = {}) {
     if (mutationLock) {
       return { ok: false, error: "A gift operation is already in progress." };
     }
@@ -374,6 +426,14 @@
       await ensureConfig();
 
       const initialCart = await fetchCart();
+      const externalDiscountCodes = getExternalDiscountCodes(initialCart);
+      if (externalDiscountCodes.length > 0 && !options.replaceExternalDiscounts) {
+        return {
+          ok: false,
+          code: "PROMO_CHOICE_REQUIRED",
+          discountCodes: externalDiscountCodes,
+        };
+      }
       const qualifyingVariantIds = initialCart.items
         .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
         .map((item) => String(item.variant_id));
@@ -425,9 +485,9 @@
 
       // 3. Apply discount code — replace old BONUS-*/GIFT-* codes with the new one
       const cart = await fetchCart();
-      const nonGiftCodes = (cart.discount_codes || [])
-        .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
-        .map((d) => d.code);
+      const nonGiftCodes = options.replaceExternalDiscounts
+        ? []
+        : getExternalDiscountCodes(cart);
       const discountStr = [...nonGiftCodes, codeData.code].join(",");
       const applyDiscount = async () => {
         const res = await fetch("/cart/update.js", {
@@ -882,6 +942,7 @@
     getShopDomain,
     // Cart helpers (also exposed for UI scripts that need them)
     fetchCart,
+    getExternalDiscountCodes,
     getGiftItems,
     getGiftSelections,
     getOriginalUnitPrice,
@@ -896,6 +957,7 @@
     // Public API
     getCartState,
     getEligibility,
+    requestPromoChoice,
     addGift,
     removeGift,
     removeGiftByKey,

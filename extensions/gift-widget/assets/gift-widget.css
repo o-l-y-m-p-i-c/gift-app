@@ -13,7 +13,8 @@
 
 .gift-widget,
 .gift-drawer-widget,
-.add-as-gift {
+.add-as-gift,
+.gift-promo-choice {
   --gift-text: rgb(var(--text-color, 28 28 28));
   --gift-text-muted: rgb(var(--text-color, 28 28 28) / 0.65);
   --gift-text-faint: rgb(var(--text-color, 28 28 28) / 0.4);
@@ -285,6 +286,75 @@
   border-top-color: var(--gift-text);
   border-radius: 50%;
   animation: gift-spin 0.6s linear infinite;
+}
+
+.gift-promo-choice {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 0.48);
+}
+
+.gift-promo-choice__dialog {
+  width: min(100%, 28rem);
+  padding: 1.5rem;
+  background: rgb(var(--background, 255 255 255));
+  color: var(--gift-text);
+  border-radius: var(--gift-radius);
+  box-shadow: 0 1.25rem 4rem rgb(0 0 0 / 0.22);
+  text-align: center;
+}
+
+.gift-promo-choice__title {
+  margin: 0 0 0.75rem;
+  font-family: var(--gift-heading-font);
+  font-size: var(--gift-text-lg);
+  font-weight: var(--gift-heading-weight);
+}
+
+.gift-promo-choice__message {
+  margin: 0;
+  color: var(--gift-text-muted);
+  font-family: var(--gift-font);
+  font-size: var(--gift-text-sm);
+  line-height: 1.5;
+}
+
+.gift-promo-choice__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.gift-promo-choice__button {
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--gift-btn-bg);
+  border-radius: var(--gift-radius-sm);
+  font-family: var(--gift-heading-font);
+  font-weight: var(--gift-heading-weight);
+  cursor: pointer;
+}
+
+.gift-promo-choice__button--keep {
+  background: transparent;
+  color: var(--gift-text);
+}
+
+.gift-promo-choice__button--gift {
+  background: var(--gift-btn-bg);
+  color: var(--gift-btn-text);
+}
+
+@media (max-width: 479px) {
+  .gift-promo-choice__actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .gift-widget__inline-error {
