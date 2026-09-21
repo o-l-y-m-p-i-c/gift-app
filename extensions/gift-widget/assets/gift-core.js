@@ -33,6 +33,7 @@
   let configLoading = null;
   let cartRequest = null;
   let mutationLock = false;
+  const promoCompatibilityCache = new Map();
   const cartUpdateSubscribers = [];
 
   // ─── Config loading ────────────────────────────────────────
@@ -103,6 +104,25 @@
         !discount.code.startsWith("GIFT-"),
       )
       .map((discount) => discount.code);
+  }
+
+  async function externalDiscountsAreCompatible(codes) {
+    const unresolved = codes.filter((code) => !promoCompatibilityCache.has(code));
+    if (unresolved.length > 0) {
+      try {
+        const params = new URLSearchParams({ codes: unresolved.join(",") });
+        const data = await fetchJson(`${getAppUrl()}/promo-compatibility?${params}`);
+        for (const discount of data.discounts || []) {
+          promoCompatibilityCache.set(
+            discount.code,
+            discount.found === true && discount.productDiscounts === true,
+          );
+        }
+      } catch (error) {
+        console.warn("[gift-core] Promo compatibility check failed:", error);
+      }
+    }
+    return codes.every((code) => promoCompatibilityCache.get(code) === true);
   }
 
   function getGiftItems(cart) {
@@ -428,11 +448,14 @@
       const initialCart = await fetchCart();
       const externalDiscountCodes = getExternalDiscountCodes(initialCart);
       if (externalDiscountCodes.length > 0 && !options.replaceExternalDiscounts) {
-        return {
-          ok: false,
-          code: "PROMO_CHOICE_REQUIRED",
-          discountCodes: externalDiscountCodes,
-        };
+        const compatible = await externalDiscountsAreCompatible(externalDiscountCodes);
+        if (!compatible) {
+          return {
+            ok: false,
+            code: "PROMO_CHOICE_REQUIRED",
+            discountCodes: externalDiscountCodes,
+          };
+        }
       }
       const qualifyingVariantIds = initialCart.items
         .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
@@ -523,6 +546,18 @@
         }
       }
 
+      const missingExternalCodes = nonGiftCodes.filter((code) => {
+        const applied = (updateData.discount_codes || []).find((discount) => discount.code === code);
+        return !applied?.applicable;
+      });
+      if (missingExternalCodes.length > 0) {
+        const error = new Error("The gift cannot be combined with a discount currently applied to this cart.");
+        error.code = "DISCOUNT_COMBINATION_CONFLICT";
+        error.discountCodes = missingExternalCodes;
+        error.restoreDiscountCodes = nonGiftCodes;
+        throw error;
+      }
+
       // 4. Verify the gift is fully free
       if (!giftCode?.applicable) {
         console.warn("[gift-core] gift code not applicable:", JSON.stringify({
@@ -540,6 +575,7 @@
         if (nonGiftCodes.length > 0) {
           error.code = "DISCOUNT_COMBINATION_CONFLICT";
           error.discountCodes = nonGiftCodes;
+          error.restoreDiscountCodes = nonGiftCodes;
         }
         throw error;
       }
@@ -578,8 +614,17 @@
         );
         if (addedGift) {
           await removeGiftByKey(addedGift.key).catch(() => {});
-          dispatchCartUpdated(await fetchCart().catch(() => ({})));
         }
+      }
+      if (e.restoreDiscountCodes?.length > 0) {
+        await fetch("/cart/update.js", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ discount: e.restoreDiscountCodes.join(",") }),
+        }).catch(() => {});
+      }
+      if (giftAdded) {
+        dispatchCartUpdated(await fetchCart().catch(() => ({})));
       }
       return {
         ok: false,
