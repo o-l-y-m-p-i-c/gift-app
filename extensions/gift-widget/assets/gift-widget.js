@@ -101,12 +101,22 @@
     );
   }
 
+  function hasExternalDiscount(cart) {
+    return (cart?.discount_codes || []).some(
+      (discount) => discount.applicable !== false &&
+        discount.code &&
+        !discount.code.startsWith("BONUS-") &&
+        !discount.code.startsWith("GIFT-"),
+    );
+  }
+
   function toggleCartStep(state) {
     const mainCartSections = getMainCartSections();
     const showStep1 =
       state.activeTier &&
       state.remainingBudget > 0 &&
-      state.giftSelectionCount === 0;
+      state.giftSelectionCount === 0 &&
+      !hasExternalDiscount(state.cart);
 
     mainCartSections.forEach((section) => {
       if (showStep1) {
@@ -637,7 +647,10 @@
         <div class="gift-widget__carousel gift-widget__carousel--loading">${skeletonCards}</div>
       `;
 
-      const isStep1 = activeTier && remainingBudget > 0 && giftItems.length === 0;
+      const isStep1 = activeTier &&
+        remainingBudget > 0 &&
+        giftItems.length === 0 &&
+        !hasExternalDiscount(cart);
       const skipButtonHtml = isStep1 ? `
         <button type="button" class="gift-widget__skip-button" id="gift-widget-skip">
           ${t("skip_step")}
