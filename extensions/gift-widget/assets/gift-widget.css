@@ -251,6 +251,54 @@
   to { transform: rotate(360deg); }
 }
 
+#gift-widget-container {
+  position: relative;
+}
+
+#gift-widget-container.gift-widget-container--loading {
+  min-height: 8rem;
+  pointer-events: none;
+}
+
+#gift-widget-container.gift-widget-container--loading > * {
+  opacity: 0.35;
+}
+
+#gift-widget-container.gift-widget-container--loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: rgb(var(--background, 255 255 255) / 0.5);
+}
+
+#gift-widget-container.gift-widget-container--loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.875rem 0 0 -0.875rem;
+  border: 2px solid var(--gift-border);
+  border-top-color: var(--gift-text);
+  border-radius: 50%;
+  animation: gift-spin 0.6s linear infinite;
+}
+
+.gift-widget__inline-error {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  color: rgb(var(--error-text, 203 43 43));
+  background: var(--gift-error-bg);
+  border: 1px solid rgb(var(--error-text, 203 43 43) / 0.3);
+  border-radius: var(--gift-radius-sm);
+  font-size: var(--gift-text-sm);
+  line-height: 1.4;
+  text-align: center;
+}
+
 /* ─── Error state ──────────────────────────────────────────── */
 
 .gift-widget--error {

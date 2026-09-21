@@ -476,7 +476,12 @@
           })),
           nonGiftCount: qualifyingVariantIds.length,
         }));
-        throw new Error("The gift discount could not be applied to this cart.");
+        const error = new Error("The gift cannot be combined with a discount currently applied to this cart.");
+        if (nonGiftCodes.length > 0) {
+          error.code = "DISCOUNT_COMBINATION_CONFLICT";
+          error.discountCodes = nonGiftCodes;
+        }
+        throw error;
       }
       const freeGiftQuantity = getFreeGiftQuantity(updateData);
       if (freeGiftQuantity !== allGiftVariantIds.length) {
@@ -516,7 +521,12 @@
           dispatchCartUpdated(await fetchCart().catch(() => ({})));
         }
       }
-      return { ok: false, error: e.message || "Unable to add this gift." };
+      return {
+        ok: false,
+        error: e.message || "Unable to add this gift.",
+        code: e.code || null,
+        discountCodes: e.discountCodes || [],
+      };
     } finally {
       mutationLock = false;
     }
@@ -635,7 +645,7 @@
    * names for standalone section files).
    */
   function cartSectionIds() {
-    const ids = new Set(["cart-drawer", "cart-icon-bubble", "cart-live-region-text"]);
+    const ids = new Set();
     const markers = ["cart-drawer", "cart-items", "cart-notification", "#main-cart-footer"];
     for (const sel of markers) {
       const el = document.querySelector(sel);

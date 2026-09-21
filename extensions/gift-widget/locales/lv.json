@@ -20,6 +20,7 @@
     "budget_label": "Bilance: {{ amount }}",
     "unlock_free": "Atbloķēt bonusa bilanci",
     "skip_step": "Izlaist un doties uz grozu",
+    "promo_conflict": "Dāvanu nevar apvienot ar atlaides kodu {{ code }}. Noņemiet šo kodu vai lūdziet veikalam iespējot kombinēšanu ar produktu atlaidēm.",
     "drawer": {
       "cta_choose": "Izvēlieties preces",
       "cta_more": "Izvēlieties vēl preces",

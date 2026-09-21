@@ -20,6 +20,7 @@
     "budget_label": "Balance: {{ amount }}",
     "unlock_free": "Unlock bonus balance",
     "skip_step": "Skip and go to cart",
+    "promo_conflict": "The gift cannot be combined with discount code {{ code }}. Remove that code or ask the store to enable combinations with product discounts.",
     "drawer": {
       "cta_choose": "Choose your products",
       "cta_more": "Choose more products",

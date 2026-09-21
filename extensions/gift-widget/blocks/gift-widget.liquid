@@ -11,7 +11,16 @@
 <div id="gift-widget-container"
      data-shop="{{ request.host }}"
      data-cart-total="{{ cart.total_price }}"
-></div>
+>
+  <div class="gift-widget gift-widget--loading" aria-label="{{ 'gift.loading' | t | escape }}">
+    <div class="gift-widget__skeleton-line gift-widget__skeleton-line--title"></div>
+    <div class="gift-widget__skeleton-line gift-widget__skeleton-line--subtitle"></div>
+    <div class="gift-widget__loading-scale">
+      <div class="gift-widget__skeleton-line gift-widget__skeleton-line--scale"></div>
+    </div>
+    <div class="gift-widget__skeleton-line gift-widget__skeleton-line--text"></div>
+  </div>
+</div>
 
 <script type="application/json" data-gift-translations>
   {
@@ -34,6 +43,7 @@
     "budget_label": {{ 'gift.budget_label' | t | json }},
     "unlock_free": {{ 'gift.unlock_free' | t | json }},
     "skip_step": {{ 'gift.skip_step' | t | json }},
+    "promo_conflict": {{ 'gift.promo_conflict' | t | json }},
     "notif_tier_unlocked": {{ 'gift.notifications.tier_unlocked' | t | json }},
     "notif_removed_discount": {{ 'gift.notifications.removed_discount' | t | json }},
     "notif_removed_no_qualify": {{ 'gift.notifications.removed_no_qualify' | t | json }},

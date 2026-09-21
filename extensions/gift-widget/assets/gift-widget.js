@@ -47,6 +47,8 @@
   let isSelectingGift = false;
   let removingGiftKey = null;
   let productsLoading = false;
+  let widgetBusyDepth = 0;
+  let pendingEventCart = null;
 
   // ─── sessionStorage caching for gift products ─────────────
   const PRODUCTS_CACHE_PREFIX = "giftProducts_";
@@ -364,6 +366,8 @@
   // ─── Cart update handler ───────────────────────────────────
 
   async function onCartUpdate(cart) {
+    setWidgetBusy(true);
+    try {
     if (!cart || typeof cart.total_price !== "number") {
       cart = await G.fetchCart();
     }
@@ -373,12 +377,19 @@
     const settings = G.getSettings();
 
     if (state.giftSelectionCount > 0 && state.freeGiftQuantity !== state.giftSelectionCount) {
+      const conflictingCodes = (cart.discount_codes || [])
+        .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
+        .map((d) => d.code);
       await removeAllGifts(cart);
       toggleCartStep(G.computeCartState(await G.fetchCart()));
-      if (settings.showRemovalNotification) {
+      await refreshCartSection();
+      if (conflictingCodes.length > 0) {
+        const message = t("promo_conflict", { code: conflictingCodes.join(", ") });
+        showWidgetError(message);
+        showNotification(message, "warning");
+      } else if (settings.showRemovalNotification) {
         showNotification(t("notif_removed_discount"), "warning");
       }
-      await refreshCartSection();
       return;
     }
 
@@ -418,6 +429,9 @@
     toggleCartStep(updatedState);
 
     await renderWidget(cart, updatedState.activeTier, updatedState.nextTier, updatedState.thresholdBase);
+    } finally {
+      setWidgetBusy(false);
+    }
   }
 
   // ─── Rendering ─────────────────────────────────────────────
@@ -433,6 +447,28 @@
         <div class="gift-widget__skeleton-line gift-widget__skeleton-line--text"></div>
       </div>
     `;
+  }
+
+  function setWidgetBusy(busy) {
+    widgetBusyDepth = Math.max(0, widgetBusyDepth + (busy ? 1 : -1));
+    getContainers().forEach((el) => {
+      el.classList.toggle("gift-widget-container--loading", widgetBusyDepth > 0);
+      if (widgetBusyDepth > 0) el.setAttribute("aria-busy", "true");
+      else el.removeAttribute("aria-busy");
+    });
+  }
+
+  function showWidgetError(message) {
+    getContainers().forEach((el) => {
+      el.querySelector(".gift-widget__inline-error")?.remove();
+      const widget = el.querySelector(".gift-widget");
+      if (!widget) return;
+      const error = document.createElement("p");
+      error.className = "gift-widget__inline-error";
+      error.setAttribute("role", "alert");
+      error.textContent = message;
+      widget.prepend(error);
+    });
   }
 
   function renderError(el, message, retryFn) {
@@ -842,7 +878,9 @@
     try {
       const result = await G.addGift(variantId, tierId);
       if (!result.ok) {
-        throw new Error(result.error || "Unable to add this gift.");
+        const error = new Error(result.error || "Unable to add this gift.");
+        error.result = result;
+        throw error;
       }
       // Immediately transition to step 2 (show cart) before the async
       // section refresh, so the user sees the cart appear smoothly
@@ -850,7 +888,12 @@
       await refreshCartSection();
     } catch (e) {
       console.error("[Gift Widget] Failed to add gift:", e);
-      showNotification(e.message || "Unable to add this gift.", "warning");
+      const conflictCodes = e.result?.discountCodes || [];
+      const message = e.result?.code === "DISCOUNT_COMBINATION_CONFLICT"
+        ? t("promo_conflict", { code: conflictCodes.join(", ") })
+        : (e.message || "Unable to add this gift.");
+      showWidgetError(message);
+      showNotification(message, "warning");
 
       allButtons.forEach((btn) => { btn.disabled = false; });
       if (clickedLabel) clickedLabel.style.display = "";
@@ -1150,26 +1193,22 @@
   // ─── Cart update listener ──────────────────────────────────
 
   function listenForCartUpdates() {
-    function scheduleCartRefresh() {
+    function scheduleCartRefresh(cart = null) {
+      if (cart && typeof cart.total_price === "number") pendingEventCart = cart;
       if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
       cartUpdateDebounce = setTimeout(async () => {
         cartUpdateDebounce = null;
-        const cart = await G.fetchCart();
-        await onCartUpdate(cart);
-      }, 300);
+        const nextCart = pendingEventCart;
+        pendingEventCart = null;
+        await onCartUpdate(nextCart || await G.fetchCart());
+      }, cart ? 75 : 300);
     }
 
     ["cart:updated", "cart:refresh", "cart:change"].forEach((eventName) => {
-      window.addEventListener(eventName, async (event) => {
+      window.addEventListener(eventName, (event) => {
         if (isSelectingGift || removingGiftKey) return;
         const eventCart = event?.detail?.cart || event?.detail?.baseCart;
-        if (eventCart && typeof eventCart.total_price === "number") {
-          if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
-          cartUpdateDebounce = null;
-          await onCartUpdate(eventCart);
-        } else {
-          scheduleCartRefresh();
-        }
+        scheduleCartRefresh(eventCart);
       });
     });
 
