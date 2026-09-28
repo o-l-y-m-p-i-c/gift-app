@@ -4,6 +4,7 @@ import {
   Card,
   BlockStack,
   Text,
+  Link,
   DataTable,
   EmptyState,
 } from "@shopify/polaris";
@@ -26,6 +27,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     history: history.map((h) => ({
       id: h.id,
       orderId: h.orderId,
+      orderUrl: `https://admin.shopify.com/store/${shopId.replace(".myshopify.com", "")}/orders/${encodeURIComponent(h.orderId)}`, 
       giftProductTitle: h.giftProductTitle,
       giftProductPrice: (h.giftProductPrice / 100).toFixed(2),
       cartTotal: (h.cartTotal / 100).toFixed(2),
@@ -45,7 +47,9 @@ export default function HistoryPage() {
 
   const rows = history.map((h) => [
     h.date,
-    h.orderId.slice(-8),
+    <Link url={h.orderUrl} external>
+      #{h.orderId.slice(-8)}
+    </Link>,
     h.giftProductTitle,
     `${h.giftProductPrice} €`,
     `${h.cartTotal} €`,

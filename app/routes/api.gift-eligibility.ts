@@ -40,6 +40,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   const shop = session.shop;
+  const settings = await getSettings(shop);
+  if (!settings.active) {
+    return corsJson({ eligible: false, reason: "disabled" });
+  }
+
   const variantId = url.searchParams.get("variantId");
   const giftSelectionsParam = url.searchParams.get("giftSelections") || "";
 

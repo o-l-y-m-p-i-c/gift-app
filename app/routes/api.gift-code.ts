@@ -39,6 +39,11 @@ export async function action({ request }: ActionFunctionArgs) {
  * Returns: { code: string }
  */
 async function handleGiftCode(shopDomain: string, body: any) {
+  const settings = await prisma.appSettings.findUnique({ where: { shopId: shopDomain } });
+  if (settings && !settings.active) {
+    return corsJson({ error: "The gift app is disabled." }, { status: 403 });
+  }
+
   const giftVariantIds: string[] = Array.isArray(body?.giftVariantIds)
     ? body.giftVariantIds.map((id: unknown) => String(id))
     : [];

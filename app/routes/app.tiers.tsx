@@ -5,9 +5,9 @@ import {
   Card,
   BlockStack,
   Text,
+  Checkbox,
   DataTable,
   Button,
-  Badge,
   Modal,
   TextField,
   Select,
@@ -74,7 +74,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const id = parseInt(formData.get("id") as string);
       const active = formData.get("active") === "true";
 
-      await updateTier(id, { active });
+      await updateTier(id, shopId, { active });
 
       return json({ success: true, message: "Tier updated" });
     }
@@ -108,15 +108,25 @@ export default function TiersPage() {
   const [newMinAmount, setNewMinAmount] = useState("");
   const [newPercent, setNewPercent] = useState("");
 
+  const handleTierActiveChange = (id: number, active: boolean) => {
+    const formData = new FormData();
+    formData.append("intent", "update");
+    formData.append("id", String(id));
+    formData.append("shopId", shopId);
+    formData.append("active", String(active));
+    submit(formData, { method: "post" });
+  };
+
   const rows = tiers.map((t) => [
     `${t.minAmountEuro} €`,
     `${t.giftPercent.toFixed(1)}%`,
     `${t.giftAmountEuro} €`,
-    t.active ? (
-      <Badge tone="success">Active</Badge>
-    ) : (
-      <Badge tone="critical">Inactive</Badge>
-    ),
+    <Checkbox
+      label={t.active ? "Active" : "Inactive"}
+      labelHidden
+      checked={t.active}
+      onChange={(checked) => handleTierActiveChange(t.id, checked)}
+    />,
     <Button
       size="slim"
       onClick={() => {

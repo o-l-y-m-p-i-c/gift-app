@@ -16,6 +16,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   return corsJson({
     settings: {
+      active: settings.active,
       useTotalAfterDiscounts: settings.useTotalAfterDiscounts,
       showLevelUpNotification: settings.showLevelUpNotification,
       showRemovalNotification: settings.showRemovalNotification,

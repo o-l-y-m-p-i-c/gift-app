@@ -19,6 +19,11 @@ export async function createHistoryEntry(data: {
   cartTotal: number;
   thresholdBase: number;
 }) {
+  const existing = await prisma.giftHistory.findFirst({
+    where: { shopId: data.shopId, orderId: data.orderId },
+  });
+  if (existing) return existing;
+
   return prisma.giftHistory.create({ data });
 }
 

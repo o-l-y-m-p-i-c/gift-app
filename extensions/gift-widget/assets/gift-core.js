@@ -25,6 +25,7 @@
 
   let tiers = [];
   let settings = {
+    active: true,
     useTotalAfterDiscounts: true,
     showLevelUpNotification: true,
     showRemovalNotification: true,
@@ -219,8 +220,8 @@
 
   function computeCartState(cart) {
     const thresholdBase = getThresholdBase(cart);
-    const activeTier = findActiveTier(thresholdBase);
-    const nextTier = findNextTier(thresholdBase);
+    const activeTier = settings.active ? findActiveTier(thresholdBase) : null;
+    const nextTier = settings.active ? findNextTier(thresholdBase) : null;
     const giftSelections = getGiftSelections(cart);
     const totalGiftValue = getTotalGiftValue(cart);
     const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
@@ -244,6 +245,14 @@
   async function getEligibility(variantId) {
     const state = await getCartState();
     const variantIdStr = String(variantId);
+
+    if (!settings.active) {
+      return {
+        eligible: false,
+        reason: "disabled",
+        thresholdBase: state.thresholdBase,
+      };
+    }
 
     if (!state.activeTier) {
       const firstTier = tiers[0];

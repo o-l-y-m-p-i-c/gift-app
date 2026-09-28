@@ -5,6 +5,7 @@ import {
   Card,
   BlockStack,
   Text,
+  Checkbox,
   ChoiceList,
   Button,
   Box,
@@ -60,6 +61,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const useTotalAfterDiscounts = formData.get("useTotalAfterDiscounts") === "true";
   const showLevelUpNotification = formData.get("showLevelUpNotification") === "true";
   const showRemovalNotification = formData.get("showRemovalNotification") === "true";
+  const active = formData.get("active") === "true";
   const excludedCollectionsRaw = formData.get("excludedCollections") as string;
   const excludedCollections = excludedCollectionsRaw
     ? excludedCollectionsRaw.split(",").filter(Boolean)
@@ -73,6 +75,7 @@ export async function action({ request }: ActionFunctionArgs) {
     useTotalAfterDiscounts,
     showLevelUpNotification,
     showRemovalNotification,
+    active,
     excludedCollections,
     excludedTags,
   });
@@ -88,6 +91,7 @@ export default function SettingsPage() {
   const [thresholdMode, setThresholdMode] = useState<string[]>(
     settings.useTotalAfterDiscounts ? ["after"] : ["before"],
   );
+  const [active, setActive] = useState(settings.active);
   const [notifications, setNotifications] = useState<string[]>(() => {
     const selected: string[] = [];
     if (settings.showLevelUpNotification) selected.push("levelUp");
@@ -153,6 +157,7 @@ export default function SettingsPage() {
   const handleSave = () => {
     const formData = new FormData();
     formData.append("shopId", shopId);
+    formData.append("active", String(active));
     formData.append("useTotalAfterDiscounts", String(thresholdMode[0] === "after"));
     formData.append("showLevelUpNotification", String(notifications.includes("levelUp")));
     formData.append("showRemovalNotification", String(notifications.includes("removal")));
@@ -198,6 +203,20 @@ export default function SettingsPage() {
                 </Text>
               </Card>
             )}
+
+            <Card>
+              <BlockStack gap="300">
+                <Text variant="headingMd" as="h2">
+                  Gift app status
+                </Text>
+                <Checkbox
+                  label="Enable gift app on the storefront"
+                  helpText="When disabled, the gift widget and gift discount endpoints will not offer or create gifts."
+                  checked={active}
+                  onChange={setActive}
+                />
+              </BlockStack>
+            </Card>
 
             <Card>
               <BlockStack gap="400">

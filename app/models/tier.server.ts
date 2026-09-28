@@ -32,6 +32,7 @@ export async function createTier(data: {
 
 export async function updateTier(
   id: number,
+  shopId: string,
   data: {
     minAmount?: number;
     giftPercent?: number;
@@ -40,6 +41,8 @@ export async function updateTier(
     active?: boolean;
   },
 ) {
+  const tier = await prisma.giftTier.findFirst({ where: { id, shopId } });
+  if (!tier) throw new Error("Tier not found");
   return prisma.giftTier.update({ where: { id }, data });
 }
 
