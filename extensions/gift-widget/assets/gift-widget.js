@@ -20,7 +20,24 @@
     return document.querySelectorAll("#gift-widget-container");
   }
 
+  function hideContainers() {
+    getContainers().forEach((container) => {
+      if (container.dataset.giftOriginalDisplay === undefined) {
+        container.dataset.giftOriginalDisplay = container.style.display;
+      }
+      container.style.display = "none";
+    });
+  }
+
+  function showContainers() {
+    getContainers().forEach((container) => {
+      container.style.display = container.dataset.giftOriginalDisplay || "";
+      delete container.dataset.giftOriginalDisplay;
+    });
+  }
+
   if (getContainers().length === 0) return;
+  hideContainers();
 
   if (window.giftWidgetInitialized) {
     if (window.giftWidget && typeof window.giftWidget._init === "function") {
@@ -215,11 +232,19 @@
       await G.ensureConfig();
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch config:", e);
+      showContainers();
       containers.forEach((el) =>
         renderError(el, "Gift configuration is temporarily unavailable.", () => init()),
       );
       return;
     }
+
+    if (!G.getSettings().active) {
+      containers.forEach((el) => el.remove());
+      return;
+    }
+
+    showContainers();
 
     let cart;
     try {

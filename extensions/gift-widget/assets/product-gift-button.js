@@ -18,6 +18,9 @@
   const container = document.getElementById("add-as-gift-container");
   if (!container) return;
 
+  const originalDisplay = container.style.display;
+  container.style.display = "none";
+
   if (window.productGiftButtonInitialized) return;
   window.productGiftButtonInitialized = true;
 
@@ -384,8 +387,15 @@
       await G.ensureConfig();
     } catch (e) {
       console.warn("[Product Gift Button] Config load failed:", e);
+      container.style.display = originalDisplay;
     }
 
+    if (!G.getSettings().active) {
+      container.remove();
+      return;
+    }
+
+    container.style.display = originalDisplay;
     updateButton();
   }
 

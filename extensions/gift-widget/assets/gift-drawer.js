@@ -503,6 +503,18 @@
     sourceContainer = findSourceContainer();
     if (!sourceContainer) return;
 
+    try {
+      await G.ensureConfig();
+    } catch (error) {
+      console.warn("[Gift Drawer] Config load failed:", error);
+    }
+
+    if (!G.getSettings().active) {
+      sourceContainer.remove();
+      mountContainer?.remove();
+      return;
+    }
+
     // Wait for the drawer to be available
     if (!ensureMounted()) {
       // Drawer might not be in the DOM yet — retry on first cart interaction
