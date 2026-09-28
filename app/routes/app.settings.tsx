@@ -5,7 +5,6 @@ import {
   Card,
   BlockStack,
   Text,
-  Checkbox,
   ChoiceList,
   Button,
   Box,
@@ -209,12 +208,46 @@ export default function SettingsPage() {
                 <Text variant="headingMd" as="h2">
                   Gift app status
                 </Text>
-                <Checkbox
-                  label="Enable gift app on the storefront"
-                  helpText="When disabled, the gift widget and gift discount endpoints will not offer or create gifts."
-                  checked={active}
-                  onChange={setActive}
-                />
+                <InlineStack gap="300" blockAlign="center">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={active}
+                    aria-label="Enable gift app on the storefront"
+                    onClick={() => setActive((current) => !current)}
+                    style={{
+                      width: "52px",
+                      height: "30px",
+                      padding: "3px",
+                      border: "0",
+                      borderRadius: "999px",
+                      backgroundColor: active ? "#008060" : "#8c9196",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: active ? "flex-end" : "flex-start",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "24px",
+                        height: "24px",
+                        borderRadius: "50%",
+                        backgroundColor: "#ffffff",
+                        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.3)",
+                      }}
+                    />
+                  </button>
+                  <BlockStack gap="100">
+                    <Text as="p" fontWeight="semibold">
+                      {active ? "Enabled" : "Disabled"}
+                    </Text>
+                    <Text as="p" tone="subdued">
+                      When disabled, gift widgets and gift discount endpoints are turned off.
+                    </Text>
+                  </BlockStack>
+                </InlineStack>
               </BlockStack>
             </Card>
 
