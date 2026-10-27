@@ -53,7 +53,6 @@
   --gift-error-bg: color-mix(in srgb, var(--gift-error) 6%, transparent);
   --gift-btn-transform: none;
   --gift-btn-letter: 0.02em;
-  --gift-max-width: calc(var(--gift-unit) * 40);
 }
 
 /* The choice dialog sits on top of the page, outside any section. */
@@ -66,7 +65,6 @@
 .gift-widget {
   margin: var(--gift-unit) auto;
   padding: calc(var(--gift-unit) * 1.25);
-  max-width: var(--gift-max-width);
   border: 1px solid var(--gift-border);
   border-radius: var(--gift-radius);
   background: var(--gift-bg);
@@ -1133,15 +1131,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  max-width: var(--gift-max-width);
-  margin-left: auto;
-  margin-right: auto;
   width: 100%;
-  transition: min-height 0.3s ease, max-width 0.3s ease;
+  transition: min-height 0.3s ease;
 }
 
 .gift-widget-container--step1 .gift-widget {
-  max-width: var(--gift-max-width);
+  width: 100%;
   margin: calc(var(--gift-unit) * 2) auto;
   padding: calc(var(--gift-unit) * 2) calc(var(--gift-unit) * 1.5);
 }
@@ -1181,7 +1176,6 @@
 
 .gift-widget--compact {
   padding: var(--gift-unit) calc(var(--gift-unit) * 1.25);
-  max-width: var(--gift-max-width);
   margin: var(--gift-unit) auto;
   text-align: center;
 }
