@@ -23,6 +23,11 @@
 {% assign current_variant = product.selected_or_first_available_variant %}
 {% capture align_style %}text-align: {{ block.settings.alignment }};{% endcapture %}
 
+{%- comment -%}
+  Shared app attributes are written out here rather than rendered from a
+  snippet: Shopify wraps app snippet output in HTML comments, which would
+  close this tag early and print the attributes as text.
+{%- endcomment -%}
 <div id="add-as-gift-{{ block.id }}"
      class="add-as-gift {% if block.settings.full_width %}add-as-gift--full-width{% endif %}"
      data-gift-product-button
@@ -39,7 +44,15 @@
      data-loading-label="{{ loading_label | escape }}"
      data-error-label="{{ error_label | escape }}"
      data-show-remaining="{{ block.settings.show_remaining }}"
-     {% render 'gift-app-config', block: block, extra_style: align_style %}
+     data-gift-app
+     data-shop="{{ shop.permanent_domain }}"
+     data-shop-currency="{{ shop.currency }}"
+     data-money-format="{{ shop.money_format | escape }}"
+     data-proxy-path="{{ block.settings.proxy_path | default: '/apps/gift-threshold' | escape }}"
+     data-refresh-mode="{{ block.settings.refresh_mode | default: 'auto' }}"
+     data-refresh-sections="{{ block.settings.refresh_sections | escape }}"
+     data-gift-config="{{ app.metafields.gift.config.value | json | escape }}"
+     style="--gift-accent: {{ block.settings.accent_color | default: '#1c1c1c' }}; --gift-accent-text: {{ block.settings.accent_text_color | default: '#ffffff' }}; --gift-corner-radius: {{ block.settings.corner_radius | default: 12 }}px; {{ align_style }}"
      {{ block.shopify_attributes }}
 >
   <button type="button"

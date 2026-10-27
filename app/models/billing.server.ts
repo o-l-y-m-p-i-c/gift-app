@@ -1,6 +1,7 @@
 import { prisma } from "~/db.server";
 import { adminGraphql } from "~/lib/admin-api.server";
 import { PLAN_CURRENCY, getBillingAccess, getPaidPeriods } from "~/lib/billing.server";
+import { syncStorefrontConfig } from "~/models/storefront-config.server";
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -140,7 +141,7 @@ export async function syncBilling(shopId: string, { force = false } = {}) {
   }
 
   const active = subscriptions.find((sub) => sub.status === "ACTIVE");
-  return prisma.shopBilling.update({
+  const updated = await prisma.shopBilling.update({
     where: { shopId },
     data: {
       isDevStore,
@@ -150,6 +151,9 @@ export async function syncBilling(shopId: string, { force = false } = {}) {
       lastSyncedAt: now,
     },
   });
+  // Billing and currency feed the storefront config metafield.
+  await syncStorefrontConfig(shopId);
+  return updated;
 }
 
 /** Shopify cancels app subscriptions on uninstall. */

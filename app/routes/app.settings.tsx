@@ -23,6 +23,7 @@ import {
   fetchProductTagsForPicker,
 } from "~/models/settings.server";
 import { invalidateGiftProducts } from "~/models/gift-products.server";
+import { syncStorefrontConfig } from "~/models/storefront-config.server";
 import { authenticate } from "~/shopify.server";
 
 type CollectionInfo = {
@@ -80,6 +81,7 @@ export async function action({ request }: ActionFunctionArgs) {
     excludedTags,
   });
   invalidateGiftProducts(shopId);
+  await syncStorefrontConfig(shopId);
 
   return json({ success: true, message: "Settings saved" });
 }

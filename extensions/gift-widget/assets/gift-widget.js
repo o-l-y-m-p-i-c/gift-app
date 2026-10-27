@@ -19,24 +19,9 @@
     return document.querySelectorAll("[data-gift-widget]");
   }
 
-  function hideContainers() {
-    getContainers().forEach((container) => {
-      if (container.dataset.giftOriginalDisplay === undefined) {
-        container.dataset.giftOriginalDisplay = container.style.display;
-      }
-      container.style.display = "none";
-    });
-  }
-
-  function showContainers() {
-    getContainers().forEach((container) => {
-      container.style.display = container.dataset.giftOriginalDisplay || "";
-      delete container.dataset.giftOriginalDisplay;
-    });
-  }
-
+  // The block renders a skeleton in Liquid that reserves the widget's space,
+  // so the page doesn't jump when the widget loads.
   if (getContainers().length === 0) return;
-  hideContainers();
 
   if (window.giftWidgetInitialized) {
     if (window.giftWidget && typeof window.giftWidget._init === "function") {
@@ -170,7 +155,6 @@
       await G.ensureConfig();
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch config:", e);
-      showContainers();
       containers.forEach((el) =>
         renderError(el, t("unable_load"), () => init()),
       );
@@ -181,8 +165,6 @@
       containers.forEach((el) => el.remove());
       return;
     }
-
-    showContainers();
 
     let cart;
     try {

@@ -23,6 +23,7 @@ import {
   importSampleTiers,
 } from "~/models/tier.server";
 import { getSettings } from "~/models/settings.server";
+import { syncStorefrontConfig } from "~/models/storefront-config.server";
 import { SAMPLE_TIERS, calculateGiftAmount, formatMoney } from "~/lib/tiers";
 
 import { authenticate } from "~/shopify.server";
@@ -74,6 +75,7 @@ export async function action({ request }: ActionFunctionArgs) {
         collectionId: null,
       });
 
+      await syncStorefrontConfig(shopId);
       return json({ success: true, message: "Tier created" });
     }
 
@@ -83,17 +85,20 @@ export async function action({ request }: ActionFunctionArgs) {
 
       await updateTier(id, shopId, { active });
 
+      await syncStorefrontConfig(shopId);
       return json({ success: true, message: "Tier updated" });
     }
 
     if (intent === "delete") {
       const id = parseInt(formData.get("id") as string);
       await deleteTier(id, shopId);
+      await syncStorefrontConfig(shopId);
       return json({ success: true, message: "Tier deleted" });
     }
 
     if (intent === "import-sample") {
       const count = await importSampleTiers(shopId);
+      await syncStorefrontConfig(shopId);
       return json({ success: true, message: `Loaded ${count} sample tiers` });
     }
 

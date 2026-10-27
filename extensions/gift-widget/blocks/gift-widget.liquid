@@ -10,24 +10,59 @@
 {% assign promo_title = block.settings.promo_title %}
 {% if promo_title == blank %}{% assign promo_title = 'gift.promo_title' | t %}{% endif %}
 {% assign footnote = block.settings.footnote %}
+{% assign gift_config = app.metafields.gift.config.value %}
+{% assign gift_hidden = false %}
+{% if gift_config and gift_config.settings.active == false %}{% assign gift_hidden = true %}{% endif %}
+{% if gift_config and gift_config.tiers.size == 0 %}{% assign gift_hidden = true %}{% endif %}
 {% if footnote == blank %}{% assign footnote = 'gift.footnote' | t %}{% endif %}
 
+{%- comment -%}
+  Shared app attributes are written out here rather than rendered from a
+  snippet: Shopify wraps app snippet output in HTML comments, which would
+  close this tag early and print the attributes as text.
+{%- endcomment -%}
 <div id="gift-widget-{{ block.id }}"
      class="gift-widget-container"
      data-gift-widget
      data-hide-cart-until-chosen="{{ block.settings.hide_cart_until_chosen }}"
      data-main-cart-selector="{{ block.settings.main_cart_selector | escape }}"
-     {% render 'gift-app-config', block: block, extra_style: '' %}
+     data-gift-app
+     data-shop="{{ shop.permanent_domain }}"
+     data-shop-currency="{{ shop.currency }}"
+     data-money-format="{{ shop.money_format | escape }}"
+     data-proxy-path="{{ block.settings.proxy_path | default: '/apps/gift-threshold' | escape }}"
+     data-refresh-mode="{{ block.settings.refresh_mode | default: 'auto' }}"
+     data-refresh-sections="{{ block.settings.refresh_sections | escape }}"
+     data-gift-config="{{ app.metafields.gift.config.value | json | escape }}"
+     style="--gift-accent: {{ block.settings.accent_color | default: '#1c1c1c' }}; --gift-accent-text: {{ block.settings.accent_text_color | default: '#ffffff' }}; --gift-corner-radius: {{ block.settings.corner_radius | default: 12 }}px;"
      {{ block.shopify_attributes }}
 >
-  <div class="gift-widget gift-widget--loading" aria-label="{{ 'gift.loading' | t | escape }}">
-    <div class="gift-widget__skeleton-line gift-widget__skeleton-line--title"></div>
-    <div class="gift-widget__skeleton-line gift-widget__skeleton-line--subtitle"></div>
-    <div class="gift-widget__loading-scale">
-      <div class="gift-widget__skeleton-line gift-widget__skeleton-line--scale"></div>
+  {%- comment -%}
+    Skeleton shaped like the loaded widget so the page doesn't jump. Nothing
+    is rendered when the app is turned off or has no tiers.
+  {%- endcomment -%}
+  {%- unless gift_hidden -%}
+    <div class="gift-widget gift-widget--loading" aria-busy="true" aria-label="{{ 'gift.loading' | t | escape }}">
+      <div class="gift-widget__skeleton-line gift-widget__skeleton-line--title"></div>
+      <div class="gift-widget__skeleton-line gift-widget__skeleton-line--subtitle"></div>
+      <div class="gift-widget__loading-scale">
+        <div class="gift-widget__skeleton-line gift-widget__skeleton-line--scale"></div>
+      </div>
+      <div class="gift-widget__carousel gift-widget__carousel--loading">
+        {%- for i in (1..3) -%}
+          <div class="gift-widget__card gift-widget__card--skeleton">
+            <div class="gift-widget__skeleton-image"></div>
+            <div class="gift-widget__info">
+              <div class="gift-widget__skeleton-line gift-widget__skeleton-line--name"></div>
+              <div class="gift-widget__skeleton-line gift-widget__skeleton-line--price"></div>
+            </div>
+            <div class="gift-widget__skeleton-button"></div>
+          </div>
+        {%- endfor -%}
+      </div>
+      <div class="gift-widget__skeleton-line gift-widget__skeleton-line--text"></div>
     </div>
-    <div class="gift-widget__skeleton-line gift-widget__skeleton-line--text"></div>
-  </div>
+  {%- endunless -%}
 </div>
 
 <script type="application/json" data-gift-translations>

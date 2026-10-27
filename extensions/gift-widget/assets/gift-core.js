@@ -219,17 +219,54 @@
 
   // ─── Config loading ────────────────────────────────────────
 
+  /**
+   * Config rendered into the page from the app's metafield, or null when the
+   * metafield hasn't been written yet (the app falls back to the app proxy).
+   */
+  function readEmbeddedConfig() {
+    for (const el of document.querySelectorAll("[data-gift-config]")) {
+      try {
+        const config = JSON.parse(el.dataset.giftConfig || "null");
+        if (config && Array.isArray(config.tiers)) return config;
+      } catch {
+        // Ignore a malformed value and try the next block
+      }
+    }
+    return null;
+  }
+
+  function billingAllowsGifts(billing) {
+    if (!billing || billing.unlimited) return true;
+    const trialEnd = Date.parse(billing.trialEndsAt || "");
+    return Number.isFinite(trialEnd) && Date.now() < trialEnd;
+  }
+
+  async function loadConfig() {
+    const embedded = readEmbeddedConfig();
+    if (embedded) {
+      return {
+        tiers: embedded.tiers,
+        settings: {
+          ...embedded.settings,
+          active: Boolean(embedded.settings?.active) && billingAllowsGifts(embedded.billing),
+        },
+      };
+    }
+    const [tiersData, settingsData] = await Promise.all([
+      fetchJson(appUrl("tiers")),
+      fetchJson(appUrl("settings")),
+    ]);
+    return { tiers: tiersData.tiers || [], settings: settingsData.settings };
+  }
+
   async function ensureConfig() {
     if (configLoaded) return;
     if (configLoading) return configLoading;
 
     configLoading = (async () => {
-      const [tiersData, settingsData] = await Promise.all([
-        fetchJson(appUrl("tiers")),
-        fetchJson(appUrl("settings")),
-      ]);
+      const config = await loadConfig();
       // Tiers come in the shop currency; work in the customer's currency.
-      tiers = (tiersData.tiers || [])
+      tiers = config.tiers
         .map((tier) => ({
           ...tier,
           shopMinAmount: tier.minAmount,
@@ -238,7 +275,7 @@
           giftAmount: toPresentment(tier.giftAmount),
         }))
         .sort((a, b) => a.minAmount - b.minAmount);
-      settings = settingsData.settings || settings;
+      settings = config.settings || settings;
       configLoaded = true;
     })();
 
@@ -414,6 +451,25 @@
 
   const productCache = new Map();
   const PRODUCT_CACHE_TTL = 5 * 60 * 1000;
+  const SESSION_CACHE_PREFIX = "giftProducts:";
+
+  // Kept in sessionStorage too, so moving between pages doesn't refetch.
+  function readSessionProducts(key) {
+    try {
+      const entry = JSON.parse(sessionStorage.getItem(SESSION_CACHE_PREFIX + key) || "null");
+      return entry && entry.expiresAt > Date.now() ? entry : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeSessionProducts(key, entry) {
+    try {
+      sessionStorage.setItem(SESSION_CACHE_PREFIX + key, JSON.stringify(entry));
+    } catch {
+      // Storage full or unavailable — the in-memory cache still works
+    }
+  }
 
   /**
    * Gift products the customer can afford with `maxPrice` (customer-currency
@@ -422,20 +478,23 @@
   async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set(), limit = 50) {
     const shopMaxPrice = toShopCurrency(maxPrice);
     if (shopMaxPrice <= 0) return [];
-    const cacheKey = `${shopMaxPrice}:${limit}`;
-    const cached = productCache.get(cacheKey);
-    let products = cached && cached.expiresAt > Date.now() ? cached.products : null;
+    const cacheKey = `${getConfig().shop}:${shopMaxPrice}:${limit}`;
+    const cached = productCache.get(cacheKey) || readSessionProducts(cacheKey);
+    // Cached prices are in the shop currency; convert for the current currency.
+    let products = cached && cached.expiresAt > Date.now()
+      ? cached.products.map((product) => ({ ...product, price: toPresentment(product.price) }))
+      : null;
 
     if (!products) {
       const params = new URLSearchParams({ maxPrice: String(shopMaxPrice), limit: String(limit) });
       const data = await fetchJson(`${appUrl("products")}?${params}`);
-      products = (data.products || []).map((product) => ({
-        ...product,
-        price: toPresentment(product.price),
-      }));
-      if (products.length > 0) {
-        productCache.set(cacheKey, { expiresAt: Date.now() + PRODUCT_CACHE_TTL, products });
+      const shopProducts = data.products || [];
+      if (shopProducts.length > 0) {
+        const entry = { expiresAt: Date.now() + PRODUCT_CACHE_TTL, products: shopProducts };
+        productCache.set(cacheKey, entry);
+        writeSessionProducts(cacheKey, entry);
       }
+      products = shopProducts.map((product) => ({ ...product, price: toPresentment(product.price) }));
     }
 
     return products.filter(

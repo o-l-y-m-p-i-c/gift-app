@@ -72,6 +72,35 @@ describe("tiers", () => {
   });
 });
 
+describe("embedded config", () => {
+  const embed = (config: unknown) => {
+    const el = document.createElement("div");
+    el.setAttribute("data-gift-app", "");
+    el.setAttribute("data-gift-config", JSON.stringify(config));
+    document.body.appendChild(el);
+  };
+  const base = {
+    tiers: [{ id: 1, minAmount: 5000, giftAmount: 500 }],
+    settings: { active: true, useTotalAfterDiscounts: true },
+  };
+
+  it("uses the metafield config without calling the app proxy", async () => {
+    embed({ ...base, billing: { unlimited: true, trialEndsAt: null } });
+    const { G, fetchMock } = loadCore(() => ({}));
+    await G.ensureConfig();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(G.getTiers()).toHaveLength(1);
+    expect(G.getSettings().active).toBe(true);
+  });
+
+  it("turns gifts off once the trial date has passed", async () => {
+    embed({ ...base, billing: { unlimited: false, trialEndsAt: "2020-01-01T00:00:00Z" } });
+    const { G } = loadCore(() => ({}));
+    await G.ensureConfig();
+    expect(G.getSettings().active).toBe(false);
+  });
+});
+
 describe("refreshCart", () => {
   it("re-renders cart sections, keeps the drawer open and keeps live app blocks", async () => {
     document.body.innerHTML = `
