@@ -913,10 +913,17 @@
     for (let i = 0; i < ids.length; i += 5) {
       const batch = ids.slice(i, i + 5);
       try {
-        const url = `${window.location.pathname}?sections=${encodeURIComponent(batch.join(","))}`;
-        const response = await nativeFetch(url, { headers: { Accept: "application/json" } });
+        // An empty cart update returns the rendered sections. A GET on
+        // /cart?sections= doesn't work: /cart answers JSON requests with the
+        // plain cart, so the page would fall back to a full reload.
+        const response = await cartPost("cart/update.js", {
+          sections: batch.join(","),
+          sections_url: window.location.pathname,
+        });
         if (!response.ok) continue;
-        Object.assign(sections, await response.json());
+        const data = await response.json();
+        if (typeof data.item_count === "number") lastCart = data;
+        Object.assign(sections, data.sections || {});
       } catch (e) {
         console.warn("[gift-core] Section fetch failed:", batch, e);
       }

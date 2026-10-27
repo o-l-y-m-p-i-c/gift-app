@@ -110,14 +110,15 @@ describe("refreshCart", () => {
       <div id="shopify-section-header"><a href="/cart">Cart <span class="bubble">1</span></a></div>
       <div id="shopify-section-footer"><p>footer</p></div>
     `;
-    let sectionsUrl = "";
-    const { G } = loadCore((url) => {
-      if (url.includes("sections=")) {
-        sectionsUrl = url;
-        return {
+    let requestedSections = "";
+    const { G } = loadCore((url, init) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (url.endsWith("/cart/update.js") && body.sections) {
+        requestedSections = body.sections;
+        return { item_count: 2, items: [], sections: {
           "cart-drawer": `<div id="shopify-section-cart-drawer"><cart-drawer class="drawer"><div data-gift-app id="gift-drawer-1">fresh</div><p class="count">2</p></cart-drawer></div>`,
           header: `<div id="shopify-section-header"><a href="/cart">Cart <span class="bubble">2</span></a></div>`,
-        };
+        } };
       }
       return {};
     });
@@ -126,13 +127,32 @@ describe("refreshCart", () => {
 
     await G.refreshCart({ item_count: 2, items: [] });
 
-    expect(decodeURIComponent(sectionsUrl)).toContain("cart-drawer,header");
-    expect(sectionsUrl).not.toContain("footer");
+    expect(requestedSections).toBe("cart-drawer,header");
     expect(document.querySelector(".count")?.textContent).toBe("2");
     expect(document.querySelector(".bubble")?.textContent).toBe("2");
     expect(document.querySelector("cart-drawer")?.classList.contains("active")).toBe(true);
     expect(document.getElementById("gift-drawer-1")?.textContent).toBe("live");
     expect(events).toEqual(["gift:cart-updated"]);
+  });
+
+  it("doesn't reload the cart page when sections render", async () => {
+    window.history.replaceState({}, "", "/cart");
+    document.body.innerHTML = `<div id="shopify-section-main-cart"><form action="/cart"><p class="line">1</p></form></div>`;
+    const { G } = loadCore((url) =>
+      url.endsWith("/cart/update.js")
+        ? { item_count: 1, items: [], sections: { "main-cart": `<div id="shopify-section-main-cart"><form action="/cart"><p class="line">2</p></form></div>` } }
+        : {},
+    );
+    const reload = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, pathname: "/cart", reload } });
+    try {
+      await G.refreshCart({ item_count: 1, items: [] });
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: original });
+    }
+    expect(reload).not.toHaveBeenCalled();
+    expect(document.querySelector(".line")?.textContent).toBe("2");
   });
 
   it("re-renders section IDs added in the block settings", () => {
