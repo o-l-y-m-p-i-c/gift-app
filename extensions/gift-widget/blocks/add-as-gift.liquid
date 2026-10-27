@@ -23,6 +23,22 @@
 {% assign current_variant = product.selected_or_first_available_variant %}
 {% capture align_style %}text-align: {{ block.settings.alignment }};{% endcapture %}
 
+{%- capture gift_style -%}
+  --gift-accent: {{ block.settings.accent_color | default: '#1c1c1c' }};
+  --gift-accent-text: {{ block.settings.accent_text_color | default: '#ffffff' }};
+  --gift-corner-radius: {{ block.settings.corner_radius | default: 12 }}px;
+  --gift-custom-border-width: {{ block.settings.border_width | default: 1 }}px;
+  --gift-padding-scale: {{ block.settings.padding | default: '1.25' }};
+  --gift-custom-spacing: {{ block.settings.spacing | default: 16 }}px;
+  --gift-title-scale: {{ block.settings.title_size | default: '0.9375' }};
+  --gift-custom-title-transform: {% if block.settings.title_uppercase == false %}none{% else %}uppercase{% endif %};
+  {%- if block.settings.background_color != blank %} --gift-custom-bg: {{ block.settings.background_color }};{% endif -%}
+  {%- if block.settings.border_color != blank %} --gift-custom-border: {{ block.settings.border_color }};{% endif -%}
+  {%- if block.settings.card_background_color != blank %} --gift-surface: {{ block.settings.card_background_color }};{% endif -%}
+  {%- if block.settings.progress_color != blank %} --gift-custom-progress: {{ block.settings.progress_color }};{% endif -%}
+  {%- if block.settings.highlight_color != blank %} --gift-custom-highlight: {{ block.settings.highlight_color }};{% endif -%}
+  {%- if block.settings.text_color != blank %} color: {{ block.settings.text_color }};{% endif -%}
+{%- endcapture -%}
 {%- comment -%}
   Shared app attributes are written out here rather than rendered from a
   snippet: Shopify wraps app snippet output in HTML comments, which would
@@ -52,7 +68,7 @@
      data-refresh-mode="{{ block.settings.refresh_mode | default: 'auto' }}"
      data-refresh-sections="{{ block.settings.refresh_sections | escape }}"
      data-gift-config="{{ app.metafields.gift.config.value | json | escape }}"
-     style="--gift-accent: {{ block.settings.accent_color | default: '#1c1c1c' }}; --gift-accent-text: {{ block.settings.accent_text_color | default: '#ffffff' }}; --gift-corner-radius: {{ block.settings.corner_radius | default: 12 }}px; {{ align_style }}"
+     style="{{ gift_style | strip_newlines }} {{ align_style }}"
      {{ block.shopify_attributes }}
 >
   <button type="button"
@@ -226,6 +242,123 @@
       "step": 1,
       "unit": "px",
       "default": 12
+    },
+    {
+      "type": "header",
+      "content": "Colors"
+    },
+    {
+      "type": "paragraph",
+      "content": "Leave a color empty to follow the section's color scheme."
+    },
+    {
+      "type": "color",
+      "id": "background_color",
+      "label": "Background"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text"
+    },
+    {
+      "type": "color",
+      "id": "border_color",
+      "label": "Border"
+    },
+    {
+      "type": "color",
+      "id": "card_background_color",
+      "label": "Gift card background"
+    },
+    {
+      "type": "color",
+      "id": "progress_color",
+      "label": "Progress bar"
+    },
+    {
+      "type": "color",
+      "id": "highlight_color",
+      "label": "Highlight (gift budget, free prices)"
+    },
+    {
+      "type": "header",
+      "content": "Border and spacing"
+    },
+    {
+      "type": "range",
+      "id": "border_width",
+      "label": "Border width",
+      "min": 0,
+      "max": 4,
+      "step": 1,
+      "unit": "px",
+      "default": 1,
+      "info": "Set to 0 for no border."
+    },
+    {
+      "type": "select",
+      "id": "padding",
+      "label": "Inner padding",
+      "options": [
+        {
+          "value": "0.75",
+          "label": "Compact"
+        },
+        {
+          "value": "1.25",
+          "label": "Default"
+        },
+        {
+          "value": "2",
+          "label": "Spacious"
+        }
+      ],
+      "default": "1.25"
+    },
+    {
+      "type": "range",
+      "id": "spacing",
+      "label": "Space above and below",
+      "min": 0,
+      "max": 48,
+      "step": 4,
+      "unit": "px",
+      "default": 16
+    },
+    {
+      "type": "header",
+      "content": "Title"
+    },
+    {
+      "type": "select",
+      "id": "title_size",
+      "label": "Title size",
+      "options": [
+        {
+          "value": "0.8125",
+          "label": "Small"
+        },
+        {
+          "value": "0.9375",
+          "label": "Medium"
+        },
+        {
+          "value": "1.125",
+          "label": "Large"
+        },
+        {
+          "value": "1.375",
+          "label": "Extra large"
+        }
+      ],
+      "default": "0.9375"
+    },
+    {
+      "type": "checkbox",
+      "id": "title_uppercase",
+      "label": "Uppercase title",
+      "default": true
     },
     {
       "type": "header",

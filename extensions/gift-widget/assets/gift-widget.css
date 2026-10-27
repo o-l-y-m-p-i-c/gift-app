@@ -36,10 +36,19 @@
   --gift-text: currentColor;
   --gift-text-muted: color-mix(in srgb, currentColor 65%, transparent);
   --gift-text-faint: color-mix(in srgb, currentColor 40%, transparent);
-  --gift-bg: color-mix(in srgb, currentColor 4%, transparent);
+  /* Block style settings set the --gift-custom-* variables; without them
+     the widget follows the section's color scheme. */
+  --gift-bg: var(--gift-custom-bg, color-mix(in srgb, currentColor 4%, transparent));
   --gift-bg-solid: var(--gift-surface, #ffffff);
   --gift-card-bg: var(--gift-surface, color-mix(in srgb, currentColor 3%, transparent));
-  --gift-border: color-mix(in srgb, currentColor 18%, transparent);
+  --gift-border: var(--gift-custom-border, color-mix(in srgb, currentColor 18%, transparent));
+  --gift-border-width: var(--gift-custom-border-width, 1px);
+  --gift-padding: calc(var(--gift-unit) * var(--gift-padding-scale, 1.25));
+  --gift-spacing: var(--gift-custom-spacing, var(--gift-unit));
+  --gift-title-size: calc(var(--gift-unit) * var(--gift-title-scale, 0.9375));
+  --gift-title-transform: var(--gift-custom-title-transform, uppercase);
+  --gift-progress: var(--gift-custom-progress, #66bb6a);
+  --gift-progress-fill: var(--gift-custom-progress, linear-gradient(90deg, #4caf50, #66bb6a));
   --gift-btn-bg: var(--gift-accent, #1c1c1c);
   --gift-btn-text: var(--gift-accent-text, #ffffff);
   --gift-radius: var(--gift-corner-radius, 12px);
@@ -53,7 +62,7 @@
   --gift-text-lg: calc(var(--gift-unit) * 1.125);
   --gift-shadow-sm: 0 2px 8px rgb(0 0 0 / 0.05);
   --gift-shadow: 0 5px 15px rgb(0 0 0 / 0.05);
-  --gift-success: #307a07;
+  --gift-success: var(--gift-custom-highlight, #307a07);
   --gift-success-bg: color-mix(in srgb, var(--gift-success) 8%, transparent);
   --gift-warning: #b86b00;
   --gift-warning-bg: color-mix(in srgb, var(--gift-warning) 8%, transparent);
@@ -73,9 +82,9 @@
 .gift-widget {
   box-sizing: border-box;
   width: 100%;
-  margin: var(--gift-unit) auto;
-  padding: calc(var(--gift-unit) * 1.25);
-  border: 1px solid var(--gift-border);
+  margin: var(--gift-spacing) auto;
+  padding: var(--gift-padding);
+  border: var(--gift-border-width) solid var(--gift-border);
   border-radius: var(--gift-radius);
   background: var(--gift-bg);
   font-family: var(--gift-font);
@@ -91,8 +100,8 @@
 .gift-widget__promo-title {
   font-family: var(--gift-heading-font);
   font-weight: var(--gift-heading-weight);
-  font-size: var(--gift-text-sm);
-  text-transform: uppercase;
+  font-size: var(--gift-title-size);
+  text-transform: var(--gift-title-transform);
   letter-spacing: 0.04em;
   line-height: 1.3;
   margin: 0 0 calc(var(--gift-unit) * 0.75) 0;
@@ -121,7 +130,7 @@
   flex-direction: column;
   align-items: center;
   padding: calc(var(--gift-unit) * 0.75);
-  border: 1px solid var(--gift-border);
+  border: var(--gift-border-width) solid var(--gift-border);
   border-radius: var(--gift-radius-sm);
   background: var(--gift-card-bg);
   transition: box-shadow 0.2s ease;
@@ -504,7 +513,7 @@
   top: 0;
   left: 0;
   height: 100%;
-  background: linear-gradient(90deg, #4caf50, #66bb6a);
+  background: var(--gift-progress-fill);
   border-radius: 999px;
   transition: width 0.4s ease;
 }
@@ -529,7 +538,7 @@
 }
 
 .gift-widget__scale-step--unlocked .gift-widget__scale-dot {
-  background: #66bb6a;
+  background: var(--gift-progress);
 }
 
 .gift-widget__scale-step--current .gift-widget__scale-dot {
@@ -786,8 +795,8 @@
    ═══════════════════════════════════════════════════════════════ */
 
 .gift-drawer-widget {
-  padding: calc(var(--gift-unit) * 0.75) calc(var(--gift-unit) * 1.25);
-  border-top: 1px solid var(--gift-border);
+  padding: calc(var(--gift-padding) * 0.6) var(--gift-padding);
+  border-top: var(--gift-border-width) solid var(--gift-border);
   background: var(--gift-bg);
   font-family: var(--gift-font);
 }
@@ -807,8 +816,8 @@
 .gift-drawer-widget__promo-title {
   font-family: var(--gift-heading-font);
   font-weight: var(--gift-heading-weight);
-  font-size: calc(var(--gift-unit) * 0.6875);
-  text-transform: uppercase;
+  font-size: calc(var(--gift-title-size) * 0.75);
+  text-transform: var(--gift-title-transform);
   letter-spacing: 0.04em;
   line-height: 1.3;
   margin: 0 0 calc(var(--gift-unit) * 0.25) 0;
@@ -890,7 +899,7 @@
   top: 0;
   left: 0;
   height: 100%;
-  background: linear-gradient(90deg, #4caf50, #66bb6a);
+  background: var(--gift-progress-fill);
   border-radius: var(--gift-radius);
   transition: width 0.4s ease;
 }
@@ -919,7 +928,7 @@
 }
 
 .gift-drawer-widget__scale-step--unlocked .gift-drawer-widget__scale-dot {
-  background: #66bb6a;
+  background: var(--gift-progress);
 }
 
 .gift-drawer-widget__scale-step--current .gift-drawer-widget__scale-dot {
@@ -1098,7 +1107,7 @@
   flex-direction: column;
   align-items: center;
   padding: calc(var(--gift-unit) * 0.75);
-  border: 1px solid var(--gift-border);
+  border: var(--gift-border-width) solid var(--gift-border);
   border-radius: var(--gift-radius-sm);
   background: var(--gift-card-bg);
 }
@@ -1215,8 +1224,8 @@
    ═══════════════════════════════════════════════════════════════ */
 
 .gift-widget--compact {
-  padding: var(--gift-unit) calc(var(--gift-unit) * 1.25);
-  margin: var(--gift-unit) auto;
+  padding: var(--gift-padding);
+  margin: var(--gift-spacing) auto;
   text-align: center;
 }
 
