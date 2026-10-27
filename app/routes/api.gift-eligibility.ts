@@ -1,5 +1,4 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
 import { adminGraphql } from "~/lib/admin-api.server";
 import { getActiveTiers } from "~/models/tier.server";
@@ -70,7 +69,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const sortedTiers = [...tiers].sort((a, b) => a.minAmount - b.minAmount);
-  const firstTier = sortedTiers[0];
 
   // Look up the variant price and availability via Admin API
   const variantGid = `gid://shopify/ProductVariant/${variantId}`;

@@ -1,10 +1,8 @@
 {% comment %}
-  Gift Drawer Widget — Compact app block for the Prestige cart drawer.
-  Shows gift budget progress and a CTA to /cart when a gift tier is active.
-  Styled for Prestige theme (Maestrooo) using theme CSS variables.
+  Gift Drawer Widget — Compact app block for the cart drawer section.
+  Shows gift budget progress and a link to the cart page.
 
   Place via: Online Store → Customize → Cart drawer → Add block → Gift Drawer Widget
-  The block works on all templates because the cart drawer is global.
 {% endcomment %}
 
 {% assign cta_choose = block.settings.cta_choose %}
@@ -21,28 +19,41 @@
 {% if label_used == blank %}{% assign label_used = 'gift.drawer.label_used' | t %}{% endif %}
 {% assign label_full = block.settings.label_full %}
 {% if label_full == blank %}{% assign label_full = 'gift.drawer.label_full' | t %}{% endif %}
+{% assign promo_title = block.settings.promo_title %}
+{% if promo_title == blank %}{% assign promo_title = 'gift.promo_title' | t %}{% endif %}
 
-<div data-gift-drawer-widget
-     data-shop="{{ request.host }}"
-     data-show-remaining="{{ block.settings.show_remaining | default: true }}"
-     data-redirect-checkout="{{ block.settings.redirect_checkout | default: false }}"
+<div id="gift-drawer-{{ block.id }}"
+     data-gift-drawer-widget
+     data-show-remaining="{{ block.settings.show_remaining }}"
+     data-redirect-checkout="{{ block.settings.redirect_checkout }}"
      data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
-     data-cta-choose="{{ cta_choose }}"
-     data-cta-more="{{ cta_more }}"
-     data-cta-manage="{{ cta_manage }}"
-     data-label-unlock="{{ label_unlock }}"
-     data-label-unlocked="{{ label_unlocked }}"
-     data-label-used="{{ label_used }}"
-     data-label-full="{{ label_full }}"
+     data-drawer-selector="{{ block.settings.drawer_selector | escape }}"
+     data-drawer-position="{{ block.settings.drawer_position | default: 'top' }}"
+     data-cta-choose="{{ cta_choose | escape }}"
+     data-cta-more="{{ cta_more | escape }}"
+     data-cta-manage="{{ cta_manage | escape }}"
+     data-label-unlock="{{ label_unlock | escape }}"
+     data-label-unlocked="{{ label_unlocked | escape }}"
+     data-label-used="{{ label_used | escape }}"
+     data-label-full="{{ label_full | escape }}"
+     {% render 'gift-app-config', block: block, extra_style: 'display: none;' %}
+     {{ block.shopify_attributes }}
 ></div>
 
 <script type="application/json" data-gift-drawer-translations>
   {
-    "promo_title": {{ 'gift.promo_title' | t | json }},
+    "promo_title": {{ promo_title | json }},
     "footnote": {{ 'gift.footnote' | t | json }},
     "available_gifts": {{ 'gift.drawer.available_gifts' | t | json }},
     "remaining": {{ 'gift.drawer.remaining' | t | json }},
-    "loading": {{ 'gift.loading' | t | json }}
+    "loading": {{ 'gift.loading' | t | json }},
+    "cta_choose": {{ cta_choose | json }},
+    "cta_more": {{ cta_more | json }},
+    "cta_manage": {{ cta_manage | json }},
+    "label_unlock": {{ label_unlock | json }},
+    "label_unlocked": {{ label_unlocked | json }},
+    "label_used": {{ label_used | json }},
+    "label_full": {{ label_full | json }}
   }
 </script>
 
@@ -57,11 +68,17 @@
   "settings": [
     {
       "type": "paragraph",
-      "content": "Compact gift progress widget for the cart drawer. Shows budget progress and a link to /cart for gift selection. The widget inherits the color scheme from its parent section."
+      "content": "Shows the gift budget in the cart drawer, with a link to choose gifts on the cart page."
     },
     {
       "type": "header",
       "content": "Display"
+    },
+    {
+      "type": "text",
+      "id": "promo_title",
+      "label": "Title",
+      "info": "Leave empty to use the default translated text."
     },
     {
       "type": "checkbox",
@@ -72,21 +89,55 @@
     {
       "type": "checkbox",
       "id": "redirect_checkout",
-      "label": "Redirect checkout button to cart page",
+      "label": "Send the drawer's checkout button to the cart page",
       "default": false,
-      "info": "When enabled, clicking the checkout button in the cart drawer opens /cart instead of going to checkout."
+      "info": "Lets customers choose their gift on the cart page before checking out."
     },
     {
       "type": "select",
       "id": "product_preview",
       "label": "Product preview",
       "options": [
-        { "value": "disabled", "label": "Disabled (default)" },
-        { "value": "3", "label": "3 products" },
-        { "value": "4", "label": "4 products" }
+        {
+          "value": "disabled",
+          "label": "Disabled"
+        },
+        {
+          "value": "3",
+          "label": "3 products"
+        },
+        {
+          "value": "4",
+          "label": "4 products"
+        }
       ],
-      "default": "disabled",
-      "info": "Show a few eligible gift products in the drawer. Clicking a product navigates to /cart."
+      "default": "disabled"
+    },
+    {
+      "type": "header",
+      "content": "Placement"
+    },
+    {
+      "type": "text",
+      "id": "drawer_selector",
+      "label": "Cart drawer selector",
+      "info": "Optional CSS selector of the theme's cart drawer. Detected automatically when empty."
+    },
+    {
+      "type": "select",
+      "id": "drawer_position",
+      "label": "Position in the drawer",
+      "options": [
+        {
+          "value": "top",
+          "label": "Above the cart items"
+        },
+        {
+          "value": "bottom",
+          "label": "Above the drawer footer"
+        }
+      ],
+      "default": "top"
     },
     {
       "type": "header",
@@ -95,40 +146,104 @@
     {
       "type": "text",
       "id": "cta_choose",
-      "label": "CTA — choose gifts"
+      "label": "Button — choose gifts"
     },
     {
       "type": "text",
       "id": "cta_more",
-      "label": "CTA — choose more"
+      "label": "Button — choose more"
     },
     {
       "type": "text",
       "id": "cta_manage",
-      "label": "CTA — manage gifts"
+      "label": "Button — manage gifts"
     },
     {
       "type": "text",
       "id": "label_unlock",
-      "label": "Label — below threshold",
-      "info": "Use [amount] as a placeholder for the remaining amount."
+      "label": "Text — below threshold",
+      "info": "Use [amount] for the remaining amount."
     },
     {
       "type": "text",
       "id": "label_unlocked",
-      "label": "Label — budget unlocked",
-      "info": "Use [budget] as a placeholder for the gift budget."
+      "label": "Text — budget unlocked",
+      "info": "Use [budget] for the gift budget."
     },
     {
       "type": "text",
       "id": "label_used",
-      "label": "Label — partial usage",
-      "info": "Use [amount] and [remaining] as placeholders."
+      "label": "Text — partly used",
+      "info": "Use [amount] and [remaining]."
     },
     {
       "type": "text",
       "id": "label_full",
-      "label": "Label — budget fully used"
+      "label": "Text — budget fully used"
+    },
+    {
+      "type": "header",
+      "content": "Style"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Button color",
+      "default": "#1c1c1c"
+    },
+    {
+      "type": "color",
+      "id": "accent_text_color",
+      "label": "Button text color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "range",
+      "id": "corner_radius",
+      "label": "Corner radius",
+      "min": 0,
+      "max": 24,
+      "step": 1,
+      "unit": "px",
+      "default": 12
+    },
+    {
+      "type": "header",
+      "content": "Advanced"
+    },
+    {
+      "type": "select",
+      "id": "refresh_mode",
+      "label": "Cart refresh after a gift change",
+      "options": [
+        {
+          "value": "auto",
+          "label": "Re-render cart sections (recommended)"
+        },
+        {
+          "value": "events",
+          "label": "Theme cart events only"
+        },
+        {
+          "value": "reload",
+          "label": "Reload the page"
+        }
+      ],
+      "default": "auto",
+      "info": "Choose \"Reload the page\" if the cart doesn't update after adding a gift on your theme."
+    },
+    {
+      "type": "text",
+      "id": "refresh_sections",
+      "label": "Extra section IDs to refresh",
+      "info": "Comma-separated section IDs the app should also re-render, e.g. header,cart-drawer."
+    },
+    {
+      "type": "text",
+      "id": "proxy_path",
+      "label": "App proxy path",
+      "default": "/apps/gift-threshold",
+      "info": "Change only if you renamed the app proxy URL in Shopify admin."
     }
   ]
 }

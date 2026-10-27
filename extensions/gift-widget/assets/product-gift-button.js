@@ -3,405 +3,328 @@
  *
  * Uses the shared gift-core.js runtime (window.giftApp) for:
  *   - eligibility checks
- *   - cart state
- *   - gift add/remove workflow
+ *   - cart state and cart change notifications
+ *   - gift add workflow
  *
- * This file handles:
- *   - Reading the currently selected variant
- *   - Listening for variant changes (Dawn + generic)
+ * This file handles, for every "Add as gift" block on the page:
+ *   - Reading the currently selected variant (any theme: form input, common
+ *     variant events, or the ?variant= URL parameter)
  *   - Rendering button states (eligible, over budget, unavailable, etc.)
  *   - Calling giftApp.addGift() on click
- *   - Re-evaluating eligibility after cart updates
  */
 
 (function () {
-  const container = document.getElementById("add-as-gift-container");
-  if (!container) return;
-
-  const originalDisplay = container.style.display;
-  container.style.display = "none";
-
-  if (window.productGiftButtonInitialized) return;
-  window.productGiftButtonInitialized = true;
-
   const G = window.giftApp;
   if (!G) {
     console.error("[Product Gift Button] gift-core.js must be loaded before product-gift-button.js");
     return;
   }
 
-  // ─── DOM refs ──────────────────────────────────────────────
+  // Variant change events used by popular themes.
+  const VARIANT_EVENTS = ["variant:change", "variant:changed", "variantChange", "on:variant:change", "product:variant-change"];
 
-  const button = container.querySelector(".add-as-gift__button");
-  const labelEl = container.querySelector(".add-as-gift__label");
-  const spinnerEl = container.querySelector(".add-as-gift__spinner");
-  const statusEl = container.querySelector(".add-as-gift__status");
-  const remainingEl = container.querySelector(".add-as-gift__remaining");
+  function setupButton(container) {
+    if (container.dataset.giftButtonReady === "true") return;
+    container.dataset.giftButtonReady = "true";
 
-  const variantsJson = document.querySelector("[data-gift-product-variants]");
-  let variants = [];
-  try {
-    variants = JSON.parse(variantsJson?.textContent || "[]");
-  } catch {
-    console.warn("[Product Gift Button] Could not parse variant JSON");
-  }
+    const originalDisplay = container.style.display;
+    container.style.display = "none";
 
-  // ─── Translations ──────────────────────────────────────────
+    const button = container.querySelector(".add-as-gift__button");
+    const labelEl = container.querySelector(".add-as-gift__label");
+    const spinnerEl = container.querySelector(".add-as-gift__spinner");
+    const statusEl = container.querySelector(".add-as-gift__status");
+    const remainingEl = container.querySelector(".add-as-gift__remaining");
 
-  let _translations = null;
-  function getTranslations() {
-    if (_translations) return _translations;
+    let variants = [];
     try {
-      const el = document.querySelector("[data-gift-product-translations]");
-      if (el) _translations = JSON.parse(el.textContent);
-    } catch (e) {
-      console.warn("[Product Gift Button] Failed to parse translations:", e);
+      variants = JSON.parse(container.querySelector("[data-gift-product-variants]")?.textContent || "[]");
+    } catch {
+      console.warn("[Product Gift Button] Could not parse variant JSON");
     }
-    if (!_translations) _translations = {};
-    return _translations;
-  }
 
-  function t(key, vars) {
-    const tr = getTranslations();
-    let str = tr[key];
-    if (str == null) return key;
-    if (vars) {
-      for (const [k, v] of Object.entries(vars)) {
+    let translations = {};
+    try {
+      translations = JSON.parse(container.querySelector("[data-gift-product-translations]")?.textContent || "{}");
+    } catch {
+      // Labels fall back to the block settings
+    }
+
+    function t(key, vars) {
+      let str = translations[key];
+      if (str == null) return "";
+      for (const [k, v] of Object.entries(vars || {})) {
         str = str.replace(new RegExp(`{{\\s*${k}\\s*}}`, "g"), v);
       }
+      return str;
     }
-    return str;
-  }
 
-  // ─── State ──────────────────────────────────────────────────
+    function getLabel(key) {
+      return container.dataset[key] || "";
+    }
 
-  let currentVariantId = container.dataset.variantId || "";
-  let currentVariantPrice = parseInt(container.dataset.variantPrice || "0", 10);
-  let currentVariantAvailable = container.dataset.variantAvailable === "true";
-  let isAdding = false;
-  let lastEligibility = null;
+    // ─── Variant selection ─────────────────────────────────────
 
-  // ─── Variant selection ─────────────────────────────────────
+    // Liquid's variant JSON has prices in the customer's currency, in cents.
+    let currentVariant = null;
 
-  function getProductForm() {
-    return (
-      document.querySelector('form[action*="/cart/add"]') ||
-      document.querySelector('form[data-type="add-to-cart-form"]') ||
-      document.querySelector("product-form form")
-    );
-  }
+    function findVariantById(id) {
+      return variants.find((v) => String(v.id) === String(id)) || null;
+    }
 
-  function getVariantInput() {
-    const form = getProductForm();
-    return form?.querySelector('input[name="id"], select[name="id"]');
-  }
+    function getProductForm() {
+      const custom = container.dataset.productFormSelector;
+      if (custom) {
+        try {
+          const el = document.querySelector(custom);
+          if (el) return el;
+        } catch {
+          // Invalid merchant selector — fall back to detection
+        }
+      }
+      // Prefer the form in the same section as this block.
+      const section = container.closest('[id^="shopify-section-"]') || document;
+      const productId = container.dataset.productId;
+      return (
+        section.querySelector(`form[action*="/cart/add"] input[name="product-id"][value="${productId}"]`)?.form ||
+        section.querySelector('form[action*="/cart/add"]') ||
+        document.querySelector('form[action*="/cart/add"]')
+      );
+    }
 
-  function findVariantById(id) {
-    return variants.find((v) => String(v.id) === String(id));
-  }
+    function readSelectedVariantId() {
+      const input = getProductForm()?.querySelector('[name="id"]');
+      if (input?.value && findVariantById(input.value)) return input.value;
+      const fromUrl = new URLSearchParams(window.location.search).get("variant");
+      if (fromUrl && findVariantById(fromUrl)) return fromUrl;
+      return container.dataset.variantId || "";
+    }
 
-  function readSelectedVariant() {
-    const input = getVariantInput();
-    if (input) {
-      const id = input.value;
-      const variant = findVariantById(id);
-      if (variant) {
-        currentVariantId = String(variant.id);
-        currentVariantPrice = Math.round(parseFloat(variant.price || "0") * 100);
-        currentVariantAvailable = variant.available !== false;
+    function syncVariant() {
+      const id = readSelectedVariantId();
+      if (currentVariant && String(currentVariant.id) === String(id)) return false;
+      currentVariant = findVariantById(id) || {
+        id,
+        price: parseInt(container.dataset.variantPrice || "0", 10),
+        available: container.dataset.variantAvailable === "true",
+      };
+      return true;
+    }
+
+    function onVariantMaybeChanged() {
+      if (syncVariant()) updateButton();
+    }
+
+    function listenForVariantChanges() {
+      document.addEventListener("change", (event) => {
+        const form = getProductForm();
+        if (form && event.target instanceof Node && form.contains(event.target)) {
+          // Themes update the hidden id input after their own change handler.
+          setTimeout(onVariantMaybeChanged, 0);
+        }
+      });
+      VARIANT_EVENTS.forEach((name) => document.addEventListener(name, () => setTimeout(onVariantMaybeChanged, 0)));
+      window.addEventListener("popstate", onVariantMaybeChanged);
+      // Fallback for themes that swap the id input or only update the URL.
+      setInterval(() => {
+        if (document.visibilityState === "visible") onVariantMaybeChanged();
+      }, 750);
+    }
+
+    // ─── Button state rendering ─────────────────────────────────
+
+    function setButtonState({ label, disabled, showSpinner, statusText, statusType, remainingText }) {
+      if (labelEl) labelEl.textContent = label;
+      button.disabled = !!disabled;
+      if (spinnerEl) spinnerEl.style.display = showSpinner ? "inline-block" : "none";
+
+      if (statusEl) {
+        statusEl.textContent = statusText || "";
+        statusEl.className = `add-as-gift__status add-as-gift__status--${statusType || "info"}`;
+        statusEl.style.display = statusText ? "" : "none";
+      }
+
+      if (remainingEl) {
+        remainingEl.textContent = remainingText || "";
+        remainingEl.style.display = remainingText ? "" : "none";
+      }
+    }
+
+    let isAdding = false;
+
+    async function updateButton() {
+      if (isAdding || !currentVariant) return;
+
+      if (currentVariant.available === false) {
+        setButtonState({ label: getLabel("unavailableLabel"), disabled: true });
         return;
       }
-    }
-    // Fallback to data attributes
-    currentVariantId = container.dataset.variantId || "";
-    currentVariantPrice = parseInt(container.dataset.variantPrice || "0", 10);
-    currentVariantAvailable = container.dataset.variantAvailable === "true";
-  }
 
-  function listenForVariantChanges() {
-    const input = getVariantInput();
-    if (input) {
-      input.addEventListener("change", () => {
-        readSelectedVariant();
-        updateButton();
-      });
-    }
+      try {
+        const variantId = currentVariant.id;
+        const eligibility = await G.getEligibility(variantId, {
+          price: Number(currentVariant.price),
+          available: currentVariant.available !== false,
+        });
+        // Variant changed or an add started while we waited
+        if (isAdding || String(currentVariant.id) !== String(variantId)) return;
 
-    // Dawn dispatches custom events on variant change
-    document.addEventListener("variant:changed", (e) => {
-      const v = e?.detail?.variant;
-      if (v && v.id) {
-        currentVariantId = String(v.id);
-        currentVariantPrice = Math.round(parseFloat(v.price || "0") * 100);
-        currentVariantAvailable = v.available !== false;
-        updateButton();
-      }
-    });
-
-    // Some themes use a custom element that updates the hidden input
-    const form = getProductForm();
-    if (form && typeof MutationObserver !== "undefined") {
-      const observer = new MutationObserver(() => {
-        readSelectedVariant();
-        updateButton();
-      });
-      const targetInput = getVariantInput();
-      if (targetInput) {
-        observer.observe(targetInput, { attributes: true, childList: false, subtree: false });
-      }
-    }
-  }
-
-  // ─── Button state rendering ─────────────────────────────────
-
-  function setButtonState({ label, disabled, showSpinner, statusText, statusType, remainingText }) {
-    if (labelEl) labelEl.textContent = label;
-    button.disabled = !!disabled;
-    if (spinnerEl) spinnerEl.style.display = showSpinner ? "inline-block" : "none";
-
-    if (statusEl) {
-      if (statusText) {
-        statusEl.textContent = statusText;
-        statusEl.className = `add-as-gift__status add-as-gift__status--${statusType || "info"}`;
-        statusEl.style.display = "";
-      } else {
-        statusEl.style.display = "none";
-      }
-    }
-
-    if (remainingEl) {
-      if (remainingText) {
-        remainingEl.textContent = remainingText;
-        remainingEl.style.display = "";
-      } else {
-        remainingEl.style.display = "none";
-      }
-    }
-  }
-
-  function getLabel(key) {
-    return container.dataset[key] || "";
-  }
-
-  async function updateButton() {
-    if (isAdding) return;
-
-    if (!currentVariantAvailable) {
-      setButtonState({
-        label: getLabel("unavailableLabel") || "Unavailable as gift",
-        disabled: true,
-      });
-      return;
-    }
-
-    try {
-      const eligibility = await G.getEligibility(currentVariantId);
-      lastEligibility = eligibility;
-
-      if (isAdding) return; // state changed during async
-
-      if (eligibility.eligible) {
-        const remainingText = container.dataset.showRemaining === "true" && eligibility.remainingBudget != null
+        const remainingBudgetText = eligibility.remainingBudget != null
           ? t("remaining_budget", { amount: G.formatPrice(eligibility.remainingBudget) })
           : "";
-        setButtonState({
-          label: getLabel("buttonLabel") || "Add as bonus",
-          disabled: false,
-          remainingText,
-        });
-      } else if (eligibility.reason === "no_tier") {
-        const amountToUnlock = eligibility.amountToUnlock || 0;
-        const remainingText = amountToUnlock > 0
-          ? t("add_more", { amount: G.formatPrice(amountToUnlock) })
-          : "";
-        setButtonState({
-          label: getLabel("disabledLabel") || "Add more to unlock bonus",
-          disabled: true,
-          remainingText,
-        });
-      } else if (eligibility.reason === "over_budget") {
-        const remainingText = eligibility.remainingBudget != null
-          ? t("remaining_budget", { amount: G.formatPrice(eligibility.remainingBudget) })
-          : "";
-        setButtonState({
-          label: getLabel("overBudgetLabel") || "Exceeds remaining bonus balance",
-          disabled: true,
-          remainingText,
-        });
-      } else if (eligibility.reason === "excluded_collection" || eligibility.reason === "excluded_tag") {
-        setButtonState({
-          label: getLabel("excludedLabel") || "Not eligible for bonus",
-          disabled: true,
-        });
-      } else if (eligibility.reason === "busy") {
-        setButtonState({
-          label: getLabel("loadingLabel") || "Adding…",
-          disabled: true,
-        });
-      } else {
-        setButtonState({
-          label: getLabel("disabledLabel") || "Add more to unlock bonus",
-          disabled: true,
-        });
-      }
-    } catch (e) {
-      console.error("[Product Bonus Button] Eligibility check failed:", e);
-      setButtonState({
-        label: getLabel("disabledLabel") || "Add more to unlock bonus",
-        disabled: true,
-      });
-    }
-  }
 
-  // ─── Click handler ─────────────────────────────────────────
-
-  async function handleClick() {
-    if (isAdding || button.disabled) return;
-    isAdding = true;
-    let addSucceeded = false;
-
-    setButtonState({
-      label: getLabel("loadingLabel") || "Adding…",
-      disabled: true,
-      showSpinner: true,
-    });
-
-    try {
-      // Re-check eligibility right before adding
-      const eligibility = await G.getEligibility(currentVariantId);
-      if (!eligibility.eligible) {
-        throw new Error(eligibility.reason || "not eligible");
-      }
-
-      let result = await G.addGift(currentVariantId, eligibility.tierId);
-      if (result.code === "PROMO_CHOICE_REQUIRED") {
-        const codeLabel = (result.discountCodes || []).join(", ");
-        const useGift = await G.requestPromoChoice({
-          title: t("promo_choice_title"),
-          message: t("promo_choice_message", { code: codeLabel }),
-          keepLabel: t("promo_keep", { code: codeLabel }),
-          useGiftLabel: t("promo_use_gift"),
-        });
-        if (!useGift) {
+        if (eligibility.eligible) {
           setButtonState({
-            label: getLabel("buttonLabel") || "Add as bonus",
+            label: getLabel("buttonLabel"),
             disabled: false,
+            remainingText: container.dataset.showRemaining === "true" ? remainingBudgetText : "",
           });
-          return;
+        } else if (eligibility.reason === "no_tier") {
+          setButtonState({
+            label: getLabel("disabledLabel"),
+            disabled: true,
+            remainingText: eligibility.amountToUnlock > 0
+              ? t("add_more", { amount: G.formatPrice(eligibility.amountToUnlock) })
+              : "",
+          });
+        } else if (eligibility.reason === "over_budget") {
+          setButtonState({ label: getLabel("overBudgetLabel"), disabled: true, remainingText: remainingBudgetText });
+        } else if (eligibility.reason === "excluded_collection" || eligibility.reason === "excluded_tag") {
+          setButtonState({ label: getLabel("excludedLabel"), disabled: true });
+        } else if (eligibility.reason === "unavailable") {
+          setButtonState({ label: getLabel("unavailableLabel"), disabled: true });
+        } else if (eligibility.reason === "busy") {
+          setButtonState({ label: getLabel("loadingLabel"), disabled: true });
+        } else {
+          setButtonState({ label: getLabel("disabledLabel"), disabled: true });
         }
-        result = await G.addGift(currentVariantId, eligibility.tierId, { replaceExternalDiscounts: true });
+      } catch (e) {
+        console.error("[Product Gift Button] Eligibility check failed:", e);
+        setButtonState({ label: getLabel("disabledLabel"), disabled: true });
       }
-      if (!result.ok) {
-        throw new Error(result.error || "Unable to add.");
-      }
+    }
 
-      addSucceeded = true;
-      // Keep button disabled — updateButton() will re-enable if still eligible
-      setButtonState({
-        label: getLabel("buttonLabel") || "Add as bonus",
-        disabled: true,
-        statusText: t("added"),
-        statusType: "success",
-      });
-    } catch (e) {
-      console.error("[Product Bonus Button] Failed to add:", e);
-      setButtonState({
-        label: getLabel("buttonLabel") || "Add as bonus",
-        disabled: false,
-        statusText: getLabel("errorLabel") || "Could not add — try again",
-        statusType: "error",
-      });
-      setTimeout(updateButton, 3000);
-    } finally {
-      isAdding = false;
-      if (addSucceeded) {
-        // Re-check eligibility immediately — re-enables button only if
-        // the variant still fits in the remaining gift budget.
+    // ─── Click handler ─────────────────────────────────────────
+
+    async function handleClick() {
+      if (isAdding || button.disabled || !currentVariant) return;
+      isAdding = true;
+      let addSucceeded = false;
+
+      setButtonState({ label: getLabel("loadingLabel"), disabled: true, showSpinner: true });
+
+      try {
+        const variantInfo = { price: Number(currentVariant.price), available: currentVariant.available !== false };
+        const eligibility = await G.getEligibility(currentVariant.id, variantInfo);
+        if (!eligibility.eligible) {
+          throw new Error(eligibility.reason || "not eligible");
+        }
+
+        let result = await G.addGift(currentVariant.id, eligibility.tierId);
+        if (result.code === "PROMO_CHOICE_REQUIRED") {
+          const codeLabel = (result.discountCodes || []).join(", ");
+          const useGift = await G.requestPromoChoice({
+            title: t("promo_choice_title"),
+            message: t("promo_choice_message", { code: codeLabel }),
+            keepLabel: t("promo_keep", { code: codeLabel }),
+            useGiftLabel: t("promo_use_gift"),
+          });
+          if (!useGift) {
+            setButtonState({ label: getLabel("buttonLabel"), disabled: false });
+            return;
+          }
+          result = await G.addGift(currentVariant.id, eligibility.tierId, { replaceExternalDiscounts: true });
+        }
+        if (!result.ok) {
+          throw new Error(result.error || "Unable to add.");
+        }
+
+        addSucceeded = true;
+        setButtonState({
+          label: getLabel("buttonLabel"),
+          disabled: true,
+          statusText: t("added"),
+          statusType: "success",
+        });
+      } catch (e) {
+        console.error("[Product Gift Button] Failed to add:", e);
+        setButtonState({
+          label: getLabel("buttonLabel"),
+          disabled: false,
+          statusText: getLabel("errorLabel"),
+          statusType: "error",
+        });
+        setTimeout(updateButton, 3000);
+      } finally {
+        isAdding = false;
+        if (addSucceeded) updateButton();
+      }
+    }
+
+    // ─── Cart update listener ──────────────────────────────────
+
+    let cartUpdateDebounce = null;
+    function scheduleButtonRefresh(delay = 400) {
+      if (isAdding) return;
+      if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
+      cartUpdateDebounce = setTimeout(() => {
+        cartUpdateDebounce = null;
         updateButton();
-      }
+      }, delay);
     }
-  }
 
-  // ─── Cart update listener ──────────────────────────────────
+    // ─── Init ──────────────────────────────────────────────────
 
-  let cartUpdateDebounce = null;
+    async function init() {
+      syncVariant();
+      listenForVariantChanges();
+      G.onCartUpdate(() => scheduleButtonRefresh(200));
+      G.onCartMutation(() => scheduleButtonRefresh(400));
+      ["cart:updated", "cart:refresh", "cart:change", "cart-update"].forEach((name) => {
+        document.addEventListener(name, () => {
+          if (!G.isRefreshing()) scheduleButtonRefresh(300);
+        });
+      });
 
-  function scheduleButtonRefresh(delay = 500) {
-    if (isAdding) return;
-    if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
-    cartUpdateDebounce = setTimeout(() => {
-      cartUpdateDebounce = null;
-      updateButton();
-    }, delay);
-  }
+      button.addEventListener("click", handleClick);
 
-  function listenForCartUpdates() {
-    // 1. Listen for common cart event names across Dawn versions.
-    //    Dawn's pubsub uses "cart-update"; older themes use "cart:updated".
-    [
-      "cart:updated", "cart:refresh", "cart:change",
-      "cart-update", "quantity-update", "cart-error",
-    ].forEach((eventName) => {
-      window.addEventListener(eventName, () => scheduleButtonRefresh(300));
-    });
-
-    // 2. Intercept fetch calls to cart endpoints.
-    //    Dawn's <product-form> submits via fetch('/cart/add') and may not
-    //    dispatch any of the events above, so we also watch the network layer.
-    const originalFetch = window.fetch;
-    window.fetch = async function (input, init) {
-      const url = typeof input === "string" ? input : input?.url || "";
-      const isCartMutation =
-        url.includes("/cart/add") ||
-        url.includes("/cart/change") ||
-        url.includes("/cart/update");
-
-      const response = await originalFetch.call(this, input, init);
-
-      if (isCartMutation && response.ok) {
-        // Re-check eligibility after the cart mutation completes.
-        // Use a short delay so Dawn's own section rendering finishes first.
-        scheduleButtonRefresh(500);
+      try {
+        await G.ensureConfig();
+      } catch (e) {
+        console.warn("[Product Gift Button] Config load failed:", e);
       }
 
-      return response;
-    };
+      if (!G.getSettings().active) {
+        container.remove();
+        return;
+      }
 
-    // 3. Listen for product form submit (fallback for non-fetch submissions)
-    const productForm = getProductForm();
-    if (productForm) {
-      productForm.addEventListener("submit", () => scheduleButtonRefresh(1000));
-    }
-  }
-
-  // ─── Init ──────────────────────────────────────────────────
-
-  async function init() {
-    readSelectedVariant();
-    listenForVariantChanges();
-    listenForCartUpdates();
-
-    button.addEventListener("click", handleClick);
-
-    try {
-      await G.ensureConfig();
-    } catch (e) {
-      console.warn("[Product Gift Button] Config load failed:", e);
       container.style.display = originalDisplay;
+      updateButton();
     }
 
-    if (!G.getSettings().active) {
-      container.remove();
-      return;
-    }
+    init();
+  }
 
-    container.style.display = originalDisplay;
-    updateButton();
+  function setupAll() {
+    document.querySelectorAll("[data-gift-product-button]").forEach(setupButton);
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", setupAll);
   } else {
-    init();
+    setupAll();
+  }
+  // Quick-view modals and section re-renders can add blocks later.
+  document.addEventListener("shopify:section:load", setupAll);
+  if (typeof MutationObserver !== "undefined") {
+    let pending = null;
+    new MutationObserver(() => {
+      if (pending) return;
+      pending = setTimeout(() => {
+        pending = null;
+        setupAll();
+      }, 300);
+    }).observe(document.body, { childList: true, subtree: true });
   }
 })();

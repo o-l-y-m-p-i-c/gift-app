@@ -1,10 +1,13 @@
 services:
   - type: web
-    name: davines-gift-app
+    name: gift-threshold-app
     runtime: node
-    plan: free
+    # Always-on plan: the free plan sleeps, and Shopify times out app proxy
+    # and webhook requests that wait for a cold start.
+    plan: starter
+    healthCheckPath: /healthz
     buildCommand: npm ci && npx prisma generate && npm run build
-    startCommand: npx prisma db push --accept-data-loss && npm start
+    startCommand: npx prisma migrate deploy && npm start
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -14,12 +17,8 @@ services:
         sync: false
       - key: SHOPIFY_APP_URL
         sync: false
-      - key: SHOPIFY_ADMIN_ACCESS_TOKEN
-        sync: false
-      - key: SHOPIFY_SHOP_DOMAIN
-        value: test-store-size-localization.myshopify.com
       - key: SCOPES
-        value: read_products,write_products,read_orders,read_discounts,write_discounts,write_app_proxy
+        value: read_products,read_discounts,write_discounts,read_orders
       - key: BILLING_PLAN_NAME
         value: Gift App Pro
       - key: BILLING_PLAN_PRICE
@@ -28,6 +27,8 @@ services:
         value: USD
       - key: BILLING_TRIAL_DAYS
         value: "14"
+      - key: SHOPIFY_BILLING_TEST
+        value: "false"
       - key: NODE_ENV
         value: production
       - key: PORT

@@ -1,9 +1,15 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+#
+# Replace the placeholders below with your new app's values, or run
+# `shopify app config link` to have the CLI fill them in from the Partner Dashboard.
 
-client_id = "aa476795bd4bee04a4ce772f07b73561"
-name = "Davines Main Gift App"
-application_url = "https://gift-app-uvlp.onrender.com"
+client_id = "YOUR_CLIENT_ID"
+name = "Gift Threshold"
+application_url = "https://YOUR_APP_HOST"
 embedded = true
+
+[build]
+include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-07"
@@ -20,29 +26,28 @@ api_version = "2026-07"
   uri = "/webhooks/app-subscriptions-update"
   topics = [ "app_subscriptions/update" ]
 
+  # Mandatory GDPR webhooks for public apps
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_app_proxy,read_discounts,write_discounts,read_orders,read_products,write_products"
+# read_products   — list gift products and check variant prices
+# read_discounts  — check whether a customer's promo code combines with gifts
+# write_discounts — create the single-use gift discount codes
+# read_orders     — record gift history from orders/create
+scopes = "read_products,read_discounts,write_discounts,read_orders"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://gift-app-uvlp.onrender.com/auth/callback" ]
+redirect_urls = [ "https://YOUR_APP_HOST/auth/callback" ]
 
 [pos]
 embedded = false
 
 [app_proxy]
-url = "/api"
+url = "https://YOUR_APP_HOST/api"
 prefix = "apps"
 subpath = "gift-threshold"
-
-[[extensions]]
-type = "theme_app_extension"
-name = "Gift Widget"
-path = "extensions/gift-widget"
-
-[[extensions]]
-type = "ui_extension"
-name = "Gift Checkout Block"
-path = "extensions/checkout-ui"

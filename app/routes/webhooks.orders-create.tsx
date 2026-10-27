@@ -3,21 +3,18 @@ import { json } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { getSettings } from "~/models/settings.server";
 import { createHistoryEntry } from "~/models/history.server";
+import { authenticate } from "~/shopify.server";
 
 /**
  * Webhook: orders/create
  * Records gift history when an order with a gift product is placed.
  */
 export async function action({ request }: ActionFunctionArgs) {
-  const topic = request.headers.get("X-Shopify-Topic");
-  const shop = request.headers.get("X-Shopify-Shop-Domain");
-
-  if (topic !== "orders/create" || !shop) {
-    return json({ error: "Invalid webhook" }, { status: 400 });
-  }
+  // Verifies the HMAC signature; throws a 401 response for forged requests.
+  const { shop, payload } = await authenticate.webhook(request);
 
   try {
-    const order = await request.json();
+    const order = payload as any;
 
     const lineItems = Array.isArray(order.line_items) ? order.line_items : [];
     const giftLineItems = lineItems.filter((item: any) =>

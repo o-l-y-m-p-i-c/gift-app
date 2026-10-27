@@ -1,16 +1,24 @@
 {% comment %}
   Gift Widget — App Block for the cart page.
   Shows available gifts when the cart reaches a configured threshold.
-  Styled for Prestige theme (Maestrooo) using theme CSS variables.
-  Added from the Apps section in the theme customizer.
+  Colors follow the section's color scheme; the button color, corner radius
+  and cart refresh behaviour are set in the block settings.
 
-  Place in:
-    - Cart page section (Online Store → Customize → Cart)
+  Place via: Online Store → Customize → Cart → Add block → Gift Widget
 {% endcomment %}
 
-<div id="gift-widget-container"
-     data-shop="{{ request.host }}"
-     data-cart-total="{{ cart.total_price }}"
+{% assign promo_title = block.settings.promo_title %}
+{% if promo_title == blank %}{% assign promo_title = 'gift.promo_title' | t %}{% endif %}
+{% assign footnote = block.settings.footnote %}
+{% if footnote == blank %}{% assign footnote = 'gift.footnote' | t %}{% endif %}
+
+<div id="gift-widget-{{ block.id }}"
+     class="gift-widget-container"
+     data-gift-widget
+     data-hide-cart-until-chosen="{{ block.settings.hide_cart_until_chosen }}"
+     data-main-cart-selector="{{ block.settings.main_cart_selector | escape }}"
+     {% render 'gift-app-config', block: block, extra_style: '' %}
+     {{ block.shopify_attributes }}
 >
   <div class="gift-widget gift-widget--loading" aria-label="{{ 'gift.loading' | t | escape }}">
     <div class="gift-widget__skeleton-line gift-widget__skeleton-line--title"></div>
@@ -24,12 +32,13 @@
 
 <script type="application/json" data-gift-translations>
   {
-    "promo_title": {{ 'gift.promo_title' | t | json }},
-    "footnote": {{ 'gift.footnote' | t | json }},
+    "promo_title": {{ promo_title | json }},
+    "footnote": {{ footnote | json }},
     "loading": {{ 'gift.loading' | t | json }},
     "error_title": {{ 'gift.error_title' | t | json }},
     "retry": {{ 'gift.retry' | t | json }},
     "select": {{ 'gift.select' | t | json }},
+    "remove": {{ 'gift.remove' | t | json }},
     "gift_budget": {{ 'gift.gift_budget' | t | json }},
     "gift_budget_max": {{ 'gift.gift_budget_max' | t | json }},
     "to_unlock_next": {{ 'gift.to_unlock_next' | t | json }},
@@ -51,7 +60,9 @@
     "notif_tier_unlocked": {{ 'gift.notifications.tier_unlocked' | t | json }},
     "notif_removed_discount": {{ 'gift.notifications.removed_discount' | t | json }},
     "notif_removed_no_qualify": {{ 'gift.notifications.removed_no_qualify' | t | json }},
-    "notif_removed_choose_again": {{ 'gift.notifications.removed_choose_again' | t | json }}
+    "notif_removed_choose_again": {{ 'gift.notifications.removed_choose_again' | t | json }},
+    "notif_add_failed": {{ 'gift.notifications.add_failed' | t | json }},
+    "notif_remove_failed": {{ 'gift.notifications.remove_failed' | t | json }}
   }
 </script>
 
@@ -64,12 +75,111 @@
   "name": "Gift Widget",
   "target": "section",
   "enabled_on": {
-    "templates": ["cart"]
+    "templates": [
+      "cart"
+    ]
   },
   "settings": [
     {
       "type": "paragraph",
-      "content": "This block shows a free gift selector when the cart total reaches a configured threshold. Configure thresholds in the Gift Threshold app. The widget inherits the color scheme from its parent section."
+      "content": "Shows a free gift selector when the cart reaches a gift tier. Configure tiers in the Gift Threshold app."
+    },
+    {
+      "type": "header",
+      "content": "Content"
+    },
+    {
+      "type": "text",
+      "id": "promo_title",
+      "label": "Title",
+      "info": "Leave empty to use the default translated text."
+    },
+    {
+      "type": "textarea",
+      "id": "footnote",
+      "label": "Footnote",
+      "info": "Leave empty to use the default translated text."
+    },
+    {
+      "type": "header",
+      "content": "Behaviour"
+    },
+    {
+      "type": "checkbox",
+      "id": "hide_cart_until_chosen",
+      "label": "Hide the cart until a gift is chosen",
+      "default": false,
+      "info": "Shows the gift selector first, with a button to skip to the cart."
+    },
+    {
+      "type": "text",
+      "id": "main_cart_selector",
+      "label": "Cart section selector",
+      "info": "Optional CSS selector of the cart section to hide. Detected automatically when empty."
+    },
+    {
+      "type": "header",
+      "content": "Style"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Button color",
+      "default": "#1c1c1c"
+    },
+    {
+      "type": "color",
+      "id": "accent_text_color",
+      "label": "Button text color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "range",
+      "id": "corner_radius",
+      "label": "Corner radius",
+      "min": 0,
+      "max": 24,
+      "step": 1,
+      "unit": "px",
+      "default": 12
+    },
+    {
+      "type": "header",
+      "content": "Advanced"
+    },
+    {
+      "type": "select",
+      "id": "refresh_mode",
+      "label": "Cart refresh after a gift change",
+      "options": [
+        {
+          "value": "auto",
+          "label": "Re-render cart sections (recommended)"
+        },
+        {
+          "value": "events",
+          "label": "Theme cart events only"
+        },
+        {
+          "value": "reload",
+          "label": "Reload the page"
+        }
+      ],
+      "default": "auto",
+      "info": "Choose \"Reload the page\" if the cart doesn't update after adding a gift on your theme."
+    },
+    {
+      "type": "text",
+      "id": "refresh_sections",
+      "label": "Extra section IDs to refresh",
+      "info": "Comma-separated section IDs the app should also re-render, e.g. header,cart-drawer."
+    },
+    {
+      "type": "text",
+      "id": "proxy_path",
+      "label": "App proxy path",
+      "default": "/apps/gift-threshold",
+      "info": "Change only if you renamed the app proxy URL in Shopify admin."
     }
   ]
 }

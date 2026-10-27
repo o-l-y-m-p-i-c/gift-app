@@ -1,0 +1,61 @@
+{
+  "gift": {
+    "title": "Regalo gratis",
+    "promo_title": "¡Gasta más y llévate un regalo!",
+    "footnote": "*El presupuesto de regalo se usa una vez por pedido. La parte no utilizada no se traslada a tu próxima compra.",
+    "loading": "Cargando…",
+    "error_title": "Algo salió mal",
+    "retry": "Reintentar",
+    "select": "Elegir",
+    "remove": "Quitar regalo",
+    "gift_budget": "Presupuesto de regalo de {{ amount }}",
+    "gift_budget_max": "Presupuesto de regalo de {{ amount }}: ¡nivel máximo!",
+    "to_unlock_next": "Faltan {{ amount }} para desbloquear {{ budget }}",
+    "to_unlock_first": "Faltan {{ amount }} para tu primer regalo",
+    "unlock_more": "¡Añade más artículos al carrito para desbloquear un regalo gratis!",
+    "budget_full": "¡Has usado todo tu presupuesto de regalo de {{ amount }}!",
+    "unable_load": "No se pudieron cargar los regalos.",
+    "no_products": "No hay regalos disponibles hasta {{ amount }}.",
+    "choose_up_to": "Elige regalos hasta {{ amount }}",
+    "remaining": "Quedan {{ amount }}",
+    "budget_label": "Presupuesto de regalo: {{ amount }}",
+    "unlock_free": "Desbloquea un regalo gratis",
+    "skip_step": "Omitir e ir al carrito",
+    "promo_conflict": "El regalo no se puede combinar con el código {{ code }}. Quita ese código o pide a la tienda que permita combinarlo con descuentos de producto.",
+    "promo_choice_title": "Elige tu oferta",
+    "promo_choice_message": "El código {{ code }} ya está aplicado. Usar el regalo gratis lo reemplazará. ¿Qué oferta prefieres?",
+    "promo_keep": "Mantener {{ code }}",
+    "promo_use_gift": "Usar regalo gratis",
+    "drawer": {
+      "cta_choose": "Elegir mi regalo",
+      "cta_more": "Elegir más regalos",
+      "cta_manage": "Gestionar regalos",
+      "label_unlock": "Faltan {{ amount }} para un regalo gratis",
+      "label_unlocked": "Has desbloqueado un presupuesto de regalo de {{ budget }}",
+      "label_used": "{{ amount }} usados · quedan {{ remaining }}",
+      "label_full": "Has usado todo tu presupuesto de regalo",
+      "available_gifts": "Regalos disponibles",
+      "remaining": "Quedan {{ amount }}"
+    },
+    "product": {
+      "button_label": "Añadir como regalo",
+      "disabled_label": "Añade más para un regalo",
+      "over_budget_label": "Supera tu presupuesto de regalo",
+      "unavailable_label": "No disponible como regalo",
+      "excluded_label": "No disponible como regalo",
+      "loading_label": "Añadiendo…",
+      "error_label": "Error — inténtalo de nuevo",
+      "added": "¡Añadido al carrito!",
+      "remaining_budget": "Presupuesto de regalo restante: {{ amount }}",
+      "add_more": "Faltan {{ amount }} para un regalo"
+    },
+    "notifications": {
+      "tier_unlocked": "¡Nuevo nivel desbloqueado! Elige regalos hasta {{ amount }}",
+      "removed_discount": "Tus regalos se han quitado porque no se pudo aplicar el descuento.",
+      "removed_no_qualify": "Tu carrito ya no cumple los requisitos para un regalo gratis.",
+      "removed_choose_again": "Tus regalos se han quitado. Vuelve a elegir.",
+      "add_failed": "No se pudo añadir este regalo.",
+      "remove_failed": "No se pudo quitar el regalo. Inténtalo de nuevo."
+    }
+  }
+}

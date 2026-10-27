@@ -10,21 +10,20 @@ import {
   Button,
   Modal,
   TextField,
-  Select,
   Box,
 } from "@shopify/polaris";
 import { useLoaderData, useActionData, useSubmit } from "@remix-run/react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { prisma } from "~/db.server";
 import {
   getTiers,
   createTier,
   updateTier,
   deleteTier,
-  importDavinesTiers,
+  importSampleTiers,
 } from "~/models/tier.server";
-import { DAVINES_TIERS, calculateGiftAmount } from "~/lib/tiers";
+import { getSettings } from "~/models/settings.server";
+import { SAMPLE_TIERS, calculateGiftAmount, formatMoney } from "~/lib/tiers";
 
 import { authenticate } from "~/shopify.server";
 
@@ -32,31 +31,39 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const { session } = await authenticate.admin(request);
   const shopId = session.shop;
 
-  const tiers = await getTiers(shopId);
+  const [tiers, settings] = await Promise.all([getTiers(shopId), getSettings(shopId)]);
+  const currencyCode = settings.currencyCode;
 
   return json({
     tiers: tiers.map((t) => ({
       id: t.id,
       minAmount: t.minAmount,
-      minAmountEuro: (t.minAmount / 100).toFixed(2),
+      minAmountLabel: formatMoney(t.minAmount, currencyCode),
       giftPercent: t.giftPercent,
       giftAmount: t.giftAmount,
-      giftAmountEuro: (t.giftAmount / 100).toFixed(2),
+      giftAmountLabel: formatMoney(t.giftAmount, currencyCode),
       active: t.active,
     })),
-    shopId,
+    currencyCode,
   });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
+  const { session } = await authenticate.admin(request);
+  const shopId = session.shop;
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
-  const shopId = formData.get("shopId") as string;
 
   try {
     if (intent === "create") {
-      const minAmount = parseInt(formData.get("minAmount") as string) * 100;
+      const minAmount = Math.round(parseFloat(formData.get("minAmount") as string) * 100);
       const giftPercent = parseFloat(formData.get("giftPercent") as string);
+      if (!Number.isFinite(minAmount) || minAmount <= 0 || !Number.isFinite(giftPercent) || giftPercent <= 0 || giftPercent > 100) {
+        return json(
+          { success: false, message: "Enter a positive minimum amount and a percentage between 0 and 100." },
+          { status: 400 },
+        );
+      }
       const giftAmount = calculateGiftAmount(minAmount, giftPercent);
 
       await createTier({
@@ -81,13 +88,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (intent === "delete") {
       const id = parseInt(formData.get("id") as string);
-      await deleteTier(id);
+      await deleteTier(id, shopId);
       return json({ success: true, message: "Tier deleted" });
     }
 
-    if (intent === "import-davines") {
-      const count = await importDavinesTiers(shopId);
-      return json({ success: true, message: `Imported ${count} Davines tiers` });
+    if (intent === "import-sample") {
+      const count = await importSampleTiers(shopId);
+      return json({ success: true, message: `Loaded ${count} sample tiers` });
     }
 
     return json({ success: false, message: "Unknown intent" }, { status: 400 });
@@ -100,7 +107,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function TiersPage() {
-  const { tiers, shopId } = useLoaderData<typeof loader>();
+  const { tiers, currencyCode } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
 
@@ -112,15 +119,14 @@ export default function TiersPage() {
     const formData = new FormData();
     formData.append("intent", "update");
     formData.append("id", String(id));
-    formData.append("shopId", shopId);
     formData.append("active", String(active));
     submit(formData, { method: "post" });
   };
 
   const rows = tiers.map((t) => [
-    `${t.minAmountEuro} €`,
+    t.minAmountLabel,
     `${t.giftPercent.toFixed(1)}%`,
-    `${t.giftAmountEuro} €`,
+    t.giftAmountLabel,
     <Checkbox
       label={t.active ? "Active" : "Inactive"}
       labelHidden
@@ -133,8 +139,7 @@ export default function TiersPage() {
         const formData = new FormData();
         formData.append("intent", "delete");
         formData.append("id", String(t.id));
-        formData.append("shopId", shopId);
-        submit(formData, { method: "post" });
+            submit(formData, { method: "post" });
       }}
       tone="critical"
     >
@@ -145,7 +150,6 @@ export default function TiersPage() {
   const handleCreate = () => {
     const formData = new FormData();
     formData.append("intent", "create");
-    formData.append("shopId", shopId);
     formData.append("minAmount", newMinAmount);
     formData.append("giftPercent", newPercent);
     submit(formData, { method: "post" });
@@ -154,10 +158,9 @@ export default function TiersPage() {
     setNewPercent("");
   };
 
-  const handleImportDavines = () => {
+  const handleImportSample = () => {
     const formData = new FormData();
-    formData.append("intent", "import-davines");
-    formData.append("shopId", shopId);
+    formData.append("intent", "import-sample");
     submit(formData, { method: "post" });
   };
 
@@ -186,10 +189,10 @@ export default function TiersPage() {
                   <Box paddingBlock="400">
                     <BlockStack gap="300" align="center">
                       <Text as="p" tone="subdued">
-                        No tiers configured yet. Import the Davines preset or create custom tiers.
+                        No tiers configured yet. Load the sample tiers or create your own.
                       </Text>
-                      <Button variant="primary" onClick={handleImportDavines}>
-                        {`Import Davines Preset (${DAVINES_TIERS.length} tiers)`}
+                      <Button variant="primary" onClick={handleImportSample}>
+                        {`Load sample tiers (${SAMPLE_TIERS.length})`}
                       </Button>
                     </BlockStack>
                   </Box>
@@ -200,8 +203,8 @@ export default function TiersPage() {
                       headings={["Min Amount", "Gift %", "Max Gift Price", "Status", ""]}
                       rows={rows}
                     />
-                    <Button onClick={handleImportDavines}>
-                      Reset to Davines Preset
+                    <Button onClick={handleImportSample}>
+                      Replace with sample tiers
                     </Button>
                   </>
                 )}
@@ -242,13 +245,13 @@ export default function TiersPage() {
         <Modal.Section>
           <BlockStack gap="400">
             <TextField
-              label="Minimum Amount (EUR)"
+              label={`Minimum amount (${currencyCode})`}
               type="number"
               value={newMinAmount}
               onChange={setNewMinAmount}
               autoComplete="off"
-              placeholder="e.g., 360"
-              helpText="Cart total threshold in euros"
+              placeholder="e.g., 100"
+              helpText="Cart total threshold in your shop currency"
             />
             <TextField
               label="Gift Percentage"
@@ -266,12 +269,13 @@ export default function TiersPage() {
                   <Text as="p" tone="subdued">Preview:</Text>
                   <Text as="p">
                     Max gift price:{" "}
-                    {(
-                      Math.round(
-                        (parseFloat(newMinAmount) * 100 * parseFloat(newPercent)) / 100,
-                      ) / 100
-                    ).toFixed(2)}{" "}
-                    €
+                    {formatMoney(
+                      calculateGiftAmount(
+                        Math.round(parseFloat(newMinAmount) * 100),
+                        parseFloat(newPercent),
+                      ),
+                      currencyCode,
+                    )}
                   </Text>
                 </BlockStack>
               </Box>

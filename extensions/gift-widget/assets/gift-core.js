@@ -1,18 +1,32 @@
 /**
  * Gift Core — Shared runtime for gift eligibility, budget calculation,
- * and BXGY discount workflow.
+ * the BXGY discount workflow and theme cart refreshes.
  *
  * Used by:
- *   - gift-widget.js      (cart page)
- *   - product-gift-button.js (product page)
+ *   - gift-widget.js         (cart page block)
+ *   - gift-drawer.js         (cart drawer block / app embed)
+ *   - product-gift-button.js (product page block)
+ *
+ * Theme independence:
+ *   - URLs are built from window.Shopify.routes.root (locale/market folders).
+ *   - Prices use the customer's currency (window.Shopify.currency), tier and
+ *     product amounts from the app are converted with Shopify.currency.rate.
+ *   - After a gift change, cart sections are re-rendered through the Section
+ *     Rendering API using the section wrappers found on the page, so no
+ *     theme-specific selectors are needed. Merchants can switch the refresh
+ *     mode or add section IDs in the block settings.
+ *   - window.fetch is wrapped once, chaining any previous wrapper.
  *
  * Public API (window.giftApp):
- *   getCartState()              → { cart, thresholdBase, activeTier, nextTier, totalGiftValue, remainingBudget, giftSelections, freeGiftQuantity }
- *   getEligibility(variantId)   → { eligible, reason, tierId, giftBudget, usedBudget, remainingBudget, variantPrice, variantAvailable }
- *   addGift(variantId, tierId)  → { ok, selectionId, giftQuantity, totalGiftValue } | { ok:false, error }
- *   removeGift(selectionId)     → { ok } | { ok:false, error }
- *   refresh()                   → re-fetch config + cart and dispatch cart:updated
- *   onCartUpdate(cb)            → subscribe to cart updates
+ *   getCartState()                     → { cart, thresholdBase, activeTier, nextTier, ... }
+ *   getEligibility(variantId, variant) → { eligible, reason, tierId, giftBudget, remainingBudget, ... }
+ *   addGift(variantId, tierId)         → { ok, selectionId, ... } | { ok:false, error }
+ *   removeGift(selectionId)            → { ok } | { ok:false, error }
+ *   refreshCart(cart)                  → re-render theme cart sections + dispatch events
+ *   onCartUpdate(cb) / onCartMutation(cb)
+ *
+ * Events dispatched on document after every gift change:
+ *   gift:cart-updated, cart:refresh, cart:updated, cart:change  (detail: { cart })
  *
  * The runtime is idempotent: loading it twice is a no-op.
  */
@@ -22,6 +36,8 @@
   const GIFT_PROPERTY_KEY = "_gift";
   const GIFT_PROPERTY_VALUE = "true";
   const GIFT_SELECTION_PROPERTY_KEY = "_gift_selection";
+  const GIFT_CODE_PREFIXES = ["BONUS-", "GIFT-"];
+  const DEFAULT_PROXY_PATH = "/apps/gift-threshold";
 
   let tiers = [];
   let settings = {
@@ -33,23 +49,134 @@
   let configLoaded = false;
   let configLoading = null;
   let cartRequest = null;
+  let lastCart = null;
   let mutationLock = false;
   const promoCompatibilityCache = new Map();
   const cartUpdateSubscribers = [];
+  const cartMutationSubscribers = [];
 
-  // ─── Config loading ────────────────────────────────────────
+  // The fetch captured before any wrapping — used for the app's own
+  // requests so they never trigger the cart watcher.
+  const nativeFetch = window.fetch.bind(window);
 
-  function getAppUrl() { return "/apps/gift-threshold"; }
+  // ─── Block settings ────────────────────────────────────────
+
+  /** Settings shared by all blocks, read from the first app block on the page. */
+  function getConfig() {
+    const el = document.querySelector("[data-gift-app]");
+    const data = el?.dataset || {};
+    return {
+      shop: data.shop || "",
+      proxyPath: (data.proxyPath || DEFAULT_PROXY_PATH).replace(/\/$/, ""),
+      moneyFormat: data.moneyFormat || "",
+      shopCurrency: data.shopCurrency || "",
+      refreshMode: data.refreshMode || "auto",
+      refreshSections: (data.refreshSections || "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean),
+    };
+  }
 
   function getShopDomain() {
-    const el =
-      document.getElementById("gift-widget-container") ||
-      document.getElementById("add-as-gift-container");
-    return el?.dataset.shop || "";
+    return getConfig().shop;
+  }
+
+  // ─── Routes ────────────────────────────────────────────────
+
+  function routeRoot() {
+    const root = window.Shopify?.routes?.root || "/";
+    return root.endsWith("/") ? root : `${root}/`;
+  }
+
+  /** Storefront URL that respects locale and market subfolders, e.g. "/fr/cart". */
+  function storefrontUrl(path) {
+    return routeRoot() + path.replace(/^\//, "");
+  }
+
+  function appUrl(path) {
+    return `${getConfig().proxyPath}/${path.replace(/^\//, "")}`;
+  }
+
+  function isCartPage() {
+    return /\/cart\/?$/.test(window.location.pathname);
+  }
+
+  // ─── Currency ──────────────────────────────────────────────
+
+  /** Shop currency → customer currency conversion rate. */
+  function currencyRate() {
+    const rate = parseFloat(window.Shopify?.currency?.rate || "1");
+    return Number.isFinite(rate) && rate > 0 ? rate : 1;
+  }
+
+  function activeCurrency() {
+    return window.Shopify?.currency?.active || getConfig().shopCurrency || "USD";
+  }
+
+  /** Convert an amount in shop-currency cents to the customer's currency. */
+  function toPresentment(cents) {
+    return Math.round(cents * currencyRate());
+  }
+
+  /** Convert an amount in customer-currency cents back to the shop currency. */
+  function toShopCurrency(cents) {
+    return Math.floor(cents / currencyRate());
+  }
+
+  function formatWithDelimiters(cents, precision, thousands = ",", decimal = ".") {
+    const value = (cents / 100).toFixed(precision);
+    const [whole, fraction] = value.split(".");
+    const withThousands = whole.replace(/\B(?=(\d{3})+(?!\d))/g, thousands);
+    return fraction ? withThousands + decimal + fraction : withThousands;
+  }
+
+  /** Shopify money_format placeholders, e.g. "${{amount}}" or "{{amount_with_comma_separator}} €". */
+  function formatShopMoney(cents, format) {
+    return format.replace(/\{\{\s*(\w+)\s*\}\}/, (_, placeholder) => {
+      switch (placeholder) {
+        case "amount_no_decimals": return formatWithDelimiters(cents, 0);
+        case "amount_with_comma_separator": return formatWithDelimiters(cents, 2, ".", ",");
+        case "amount_no_decimals_with_comma_separator": return formatWithDelimiters(cents, 0, ".", ",");
+        case "amount_with_apostrophe_separator": return formatWithDelimiters(cents, 2, "'", ".");
+        case "amount_with_space_separator": return formatWithDelimiters(cents, 2, " ", ",");
+        case "amount_no_decimals_with_space_separator": return formatWithDelimiters(cents, 0, " ", ",");
+        default: return formatWithDelimiters(cents, 2);
+      }
+    });
+  }
+
+  /** Format customer-currency cents for display. */
+  function formatPrice(cents) {
+    const { moneyFormat, shopCurrency } = getConfig();
+    const currency = activeCurrency();
+    // The shop's money format is only valid for the shop currency.
+    if (moneyFormat && (!shopCurrency || shopCurrency === currency)) {
+      const textarea = document.createElement("textarea");
+      textarea.innerHTML = moneyFormat; // decode HTML entities from Liquid
+      return formatShopMoney(cents, textarea.value.replace(/<[^>]*>/g, ""));
+    }
+    const locale = document.documentElement.lang || navigator.language || "en";
+    try {
+      return new Intl.NumberFormat(locale, { style: "currency", currency }).format(cents / 100);
+    } catch {
+      return `${(cents / 100).toFixed(2)} ${currency}`;
+    }
+  }
+
+  // ─── Utils ─────────────────────────────────────────────────
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   async function fetchJson(url) {
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    const response = await nativeFetch(url, { headers: { Accept: "application/json" } });
     const contentType = response.headers.get("content-type") || "unknown";
     const body = await response.text();
     const normalizedBody = body.replace(/^\uFEFF/, "").trim();
@@ -63,32 +190,57 @@
     }
   }
 
+  function cartPost(path, body) {
+    return nativeFetch(storefrontUrl(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // ─── Config loading ────────────────────────────────────────
+
   async function ensureConfig() {
     if (configLoaded) return;
     if (configLoading) return configLoading;
 
     configLoading = (async () => {
-      const appUrl = getAppUrl();
       const [tiersData, settingsData] = await Promise.all([
-        fetchJson(`${appUrl}/tiers`),
-        fetchJson(`${appUrl}/settings`),
+        fetchJson(appUrl("tiers")),
+        fetchJson(appUrl("settings")),
       ]);
-      tiers = (tiersData.tiers || []).sort((a, b) => a.minAmount - b.minAmount);
+      // Tiers come in the shop currency; work in the customer's currency.
+      tiers = (tiersData.tiers || [])
+        .map((tier) => ({
+          ...tier,
+          shopMinAmount: tier.minAmount,
+          shopGiftAmount: tier.giftAmount,
+          minAmount: toPresentment(tier.minAmount),
+          giftAmount: toPresentment(tier.giftAmount),
+        }))
+        .sort((a, b) => a.minAmount - b.minAmount);
       settings = settingsData.settings || settings;
       configLoaded = true;
     })();
 
-    return configLoading;
+    try {
+      return await configLoading;
+    } catch (error) {
+      configLoading = null;
+      throw error;
+    }
   }
 
   // ─── Cart helpers ──────────────────────────────────────────
 
   async function fetchCart() {
     if (cartRequest) return cartRequest;
-    cartRequest = fetch("/cart.js").then(async (response) => {
-      if (!response.ok) throw new Error(`Unable to load cart (${response.status}).`);
-      return response.json();
-    });
+    cartRequest = nativeFetch(storefrontUrl("cart.js"), { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Unable to load cart (${response.status}).`);
+        lastCart = await response.json();
+        return lastCart;
+      });
     try {
       return await cartRequest;
     } finally {
@@ -96,14 +248,13 @@
     }
   }
 
+  function isGiftCode(code) {
+    return GIFT_CODE_PREFIXES.some((prefix) => code.startsWith(prefix));
+  }
+
   function getExternalDiscountCodes(cart) {
     return (cart?.discount_codes || [])
-      .filter((discount) =>
-        discount.applicable !== false &&
-        discount.code &&
-        !discount.code.startsWith("BONUS-") &&
-        !discount.code.startsWith("GIFT-"),
-      )
+      .filter((discount) => discount.applicable !== false && discount.code && !isGiftCode(discount.code))
       .map((discount) => discount.code);
   }
 
@@ -112,7 +263,7 @@
     if (unresolved.length > 0) {
       try {
         const params = new URLSearchParams({ codes: unresolved.join(",") });
-        const data = await fetchJson(`${getAppUrl()}/promo-compatibility?${params}`);
+        const data = await fetchJson(`${appUrl("promo-compatibility")}?${params}`);
         for (const discount of data.discounts || []) {
           promoCompatibilityCache.set(
             discount.code,
@@ -127,7 +278,7 @@
   }
 
   function getGiftItems(cart) {
-    return cart.items.filter(
+    return (cart?.items || []).filter(
       (item) => item.properties && item.properties[GIFT_PROPERTY_KEY] === GIFT_PROPERTY_VALUE,
     );
   }
@@ -184,7 +335,7 @@
   }
 
   function getThresholdBase(cart) {
-    return cart.items
+    return (cart?.items || [])
       .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
       .reduce(
         (sum, item) => sum + (
@@ -240,18 +391,52 @@
     };
   }
 
+  // ─── Gift products ─────────────────────────────────────────
+
+  const productCache = new Map();
+  const PRODUCT_CACHE_TTL = 5 * 60 * 1000;
+
+  /**
+   * Gift products the customer can afford with `maxPrice` (customer-currency
+   * cents). Prices in the result are converted to the customer's currency.
+   */
+  async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set(), limit = 50) {
+    const shopMaxPrice = toShopCurrency(maxPrice);
+    if (shopMaxPrice <= 0) return [];
+    const cacheKey = `${shopMaxPrice}:${limit}`;
+    const cached = productCache.get(cacheKey);
+    let products = cached && cached.expiresAt > Date.now() ? cached.products : null;
+
+    if (!products) {
+      const params = new URLSearchParams({ maxPrice: String(shopMaxPrice), limit: String(limit) });
+      const data = await fetchJson(`${appUrl("products")}?${params}`);
+      products = (data.products || []).map((product) => ({
+        ...product,
+        price: toPresentment(product.price),
+      }));
+      if (products.length > 0) {
+        productCache.set(cacheKey, { expiresAt: Date.now() + PRODUCT_CACHE_TTL, products });
+      }
+    }
+
+    return products.filter(
+      (product) => product.price <= maxPrice && !excludeVariantIds.has(String(product.variantId)),
+    );
+  }
+
   // ─── Eligibility ───────────────────────────────────────────
 
-  async function getEligibility(variantId) {
+  /**
+   * @param variantId
+   * @param variant optional { price (customer-currency cents), available } known
+   *   from the page, e.g. the product block's variant JSON.
+   */
+  async function getEligibility(variantId, variant = null) {
     const state = await getCartState();
     const variantIdStr = String(variantId);
 
     if (!settings.active) {
-      return {
-        eligible: false,
-        reason: "disabled",
-        thresholdBase: state.thresholdBase,
-      };
+      return { eligible: false, reason: "disabled", thresholdBase: state.thresholdBase };
     }
 
     if (!state.activeTier) {
@@ -265,130 +450,44 @@
       };
     }
 
-    // Look up variant price/availability from /products.json
-    let variantPrice = null;
-    let variantAvailable = null;
-    try {
-      const variantInfo = await lookupVariant(variantIdStr);
-      variantPrice = variantInfo?.price ?? null;
-      variantAvailable = variantInfo?.available ?? null;
-    } catch {
-      // If lookup fails, leave null — backend will still validate
-    }
-
-    if (variantAvailable === false) {
-      return {
-        eligible: false,
-        reason: "unavailable",
-        tierId: state.activeTier.id,
-        giftBudget: state.activeTier.giftAmount,
-        usedBudget: state.totalGiftValue,
-        remainingBudget: state.remainingBudget,
-        variantPrice,
-      };
-    }
-
-    if (variantPrice !== null && variantPrice > state.remainingBudget) {
-      return {
-        eligible: false,
-        reason: "over_budget",
-        tierId: state.activeTier.id,
-        giftBudget: state.activeTier.giftAmount,
-        usedBudget: state.totalGiftValue,
-        remainingBudget: state.remainingBudget,
-        variantPrice,
-      };
-    }
-
-    if (mutationLock) {
-      return {
-        eligible: false,
-        reason: "busy",
-        tierId: state.activeTier.id,
-        giftBudget: state.activeTier.giftAmount,
-        usedBudget: state.totalGiftValue,
-        remainingBudget: state.remainingBudget,
-        variantPrice,
-      };
-    }
-
-    // Local check passed — verify exclusions with backend
-    try {
-      const giftSelections = getGiftSelections(state.cart)
-        .map((item) => item.variant_id)
-        .join(",");
-      const url = `${getAppUrl()}/gift-eligibility?variantId=${variantIdStr}${giftSelections ? `&giftSelections=${giftSelections}` : ""}`;
-      const res = await fetch(url, { headers: { Accept: "application/json" } });
-      if (res.ok) {
-        const backendResult = await res.json();
-        // Backend is authoritative for exclusions
-        if (!backendResult.eligible && backendResult.reason === "excluded_collection") {
-          return {
-            eligible: false,
-            reason: "excluded_collection",
-            variantPrice: backendResult.variantPrice ?? variantPrice,
-          };
-        }
-        if (!backendResult.eligible && backendResult.reason === "excluded_tag") {
-          return {
-            eligible: false,
-            reason: "excluded_tag",
-            variantPrice: backendResult.variantPrice ?? variantPrice,
-          };
-        }
-        // Use backend values if more accurate
-        if (backendResult.remainingBudget != null) {
-          return backendResult;
-        }
-      }
-    } catch (e) {
-      console.warn("[gift-core] Backend eligibility check failed, using local result:", e);
-    }
-
-    return {
-      eligible: true,
-      reason: "ok",
+    const variantPrice = variant?.price ?? null;
+    const base = {
       tierId: state.activeTier.id,
       giftBudget: state.activeTier.giftAmount,
       usedBudget: state.totalGiftValue,
       remainingBudget: state.remainingBudget,
       variantPrice,
     };
-  }
 
-  /**
-   * Look up a single variant's price and availability via /products.json.
-   * Returns { price: number (cents), available: boolean } or null.
-   */
-  async function lookupVariant(variantId) {
-    const targetId = String(variantId);
-    let page = 1;
-    const perPage = 250;
-    while (page <= 4) {
-      const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) break;
-      const data = await res.json();
-      const products = data.products || [];
-      if (products.length === 0) break;
-      for (const product of products) {
-        for (const variant of product.variants || []) {
-          if (String(variant.id) === targetId) {
-            const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
-            return {
-              price: priceCents,
-              available: variant.available !== false,
-              title: variant.title === "Default Title" ? product.title : `${product.title} — ${variant.title}`,
-              image: product.images?.[0]?.src || "",
-            };
-          }
-        }
-      }
-      if (products.length < perPage) break;
-      page++;
+    if (variant?.available === false) return { ...base, eligible: false, reason: "unavailable" };
+    if (variantPrice !== null && variantPrice > state.remainingBudget) {
+      return { ...base, eligible: false, reason: "over_budget" };
     }
-    return null;
+    if (mutationLock) return { ...base, eligible: false, reason: "busy" };
+
+    // The backend is authoritative for availability, exclusions and price.
+    try {
+      const giftSelections = getGiftSelections(state.cart)
+        .map((item) => item.variant_id)
+        .join(",");
+      const params = new URLSearchParams({ variantId: variantIdStr });
+      if (giftSelections) params.set("giftSelections", giftSelections);
+      const backend = await fetchJson(`${appUrl("gift-eligibility")}?${params}`);
+      const backendPrice = backend.variantPrice != null ? toPresentment(backend.variantPrice) : variantPrice;
+
+      if (!backend.eligible && ["excluded_collection", "excluded_tag", "unavailable", "disabled"].includes(backend.reason)) {
+        return { ...base, eligible: false, reason: backend.reason, variantPrice: backendPrice };
+      }
+      // Budgets come from the cart total, which only the browser knows.
+      if (backendPrice !== null && backendPrice > state.remainingBudget) {
+        return { ...base, eligible: false, reason: "over_budget", variantPrice: backendPrice };
+      }
+      return { ...base, eligible: true, reason: "ok", variantPrice: backendPrice };
+    } catch (e) {
+      console.warn("[gift-core] Backend eligibility check failed, using local result:", e);
+    }
+
+    return { ...base, eligible: true, reason: "ok" };
   }
 
   // ─── Gift add/remove workflow ───────────────────────────────
@@ -441,6 +540,16 @@
     });
   }
 
+  async function requestGiftCode(giftVariantIds, tierId, qualifyingVariantIds) {
+    const response = await nativeFetch(appUrl("gift-code"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ giftVariantIds, tierId, qualifyingVariantIds }),
+    });
+    const data = await response.json().catch(() => ({}));
+    return { ok: response.ok && Boolean(data.code), data };
+  }
+
   async function addGift(variantId, tierId, options = {}) {
     if (mutationLock) {
       return { ok: false, error: "A gift operation is already in progress." };
@@ -476,17 +585,12 @@
       const allGiftVariantIds = [...existingGiftVariantIds, variantIdStr];
 
       // 1. Request a single BXGY discount code covering ALL gifts
-      const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          giftVariantIds: allGiftVariantIds,
-          tierId,
-          qualifyingVariantIds,
-        }),
-      });
-      const codeData = await codeResponse.json().catch(() => ({}));
-      if (!codeResponse.ok || !codeData.code) {
+      const { ok: codeOk, data: codeData } = await requestGiftCode(
+        allGiftVariantIds,
+        tierId,
+        qualifyingVariantIds,
+      );
+      if (!codeOk) {
         throw new Error(codeData.error || "Unable to create gift discount.");
       }
       if (Number(codeData.giftQuantity) !== allGiftVariantIds.length) {
@@ -495,19 +599,15 @@
 
       // 2. Add gift to cart
       addedSelectionId = generateSelectionId();
-      const addResponse = await fetch("/cart/add.js", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: [{
-            id: Number(variantIdStr),
-            quantity: 1,
-            properties: {
-              [GIFT_PROPERTY_KEY]: GIFT_PROPERTY_VALUE,
-              [GIFT_SELECTION_PROPERTY_KEY]: addedSelectionId,
-            },
-          }],
-        }),
+      const addResponse = await cartPost("cart/add.js", {
+        items: [{
+          id: Number(variantIdStr),
+          quantity: 1,
+          properties: {
+            [GIFT_PROPERTY_KEY]: GIFT_PROPERTY_VALUE,
+            [GIFT_SELECTION_PROPERTY_KEY]: addedSelectionId,
+          },
+        }],
       });
       const addData = await addResponse.json().catch(() => ({}));
       if (!addResponse.ok) {
@@ -522,15 +622,7 @@
         : getExternalDiscountCodes(cart);
       const discountStr = [...nonGiftCodes, codeData.code].join(",");
       const applyDiscount = async () => {
-        const res = await fetch("/cart/update.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            discount: discountStr,
-            sections: cartSectionIds().join(","),
-            sections_url: window.location.pathname,
-          }),
-        });
+        const res = await cartPost("cart/update.js", { discount: discountStr });
         const data = await res.json().catch(() => ({}));
         return { ok: res.ok, data };
       };
@@ -569,17 +661,6 @@
 
       // 4. Verify the gift is fully free
       if (!giftCode?.applicable) {
-        console.warn("[gift-core] gift code not applicable:", JSON.stringify({
-          sent: discountStr,
-          giftCode: codeData.code,
-          codes: (updateData.discount_codes || []).map((d) => ({
-            code: d.code,
-            applicable: d.applicable,
-            reason: d.reason || d.non_applicable_reason || null,
-            discount: d.total_calculated_discount,
-          })),
-          nonGiftCount: qualifyingVariantIds.length,
-        }));
         const error = new Error("The gift cannot be combined with a discount currently applied to this cart.");
         if (nonGiftCodes.length > 0) {
           error.code = "DISCOUNT_COMBINATION_CONFLICT";
@@ -590,22 +671,12 @@
       }
       const freeGiftQuantity = getFreeGiftQuantity(updateData);
       if (freeGiftQuantity !== allGiftVariantIds.length) {
-        console.warn("[gift-core] gift not fully free:", {
-          expected: allGiftVariantIds.length,
-          free: freeGiftQuantity,
-          items: (updateData.items || []).map((i) => ({
-            key: i.key,
-            qty: i.quantity,
-            orig: i.original_line_price,
-            final: i.final_line_price,
-            gift: !!i.properties?.[GIFT_PROPERTY_KEY],
-          })),
-        });
         throw new Error("The selected gift could not be made fully free.");
       }
 
-      // 5. Dispatch cart updated events
-      dispatchCartUpdated(updateData);
+      lastCart = updateData;
+      // 5. Refresh the theme's cart UI and notify listeners
+      await refreshCart(updateData);
 
       return {
         ok: true,
@@ -626,14 +697,10 @@
         }
       }
       if (e.restoreDiscountCodes?.length > 0) {
-        await fetch("/cart/update.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ discount: e.restoreDiscountCodes.join(",") }),
-        }).catch(() => {});
+        await cartPost("cart/update.js", { discount: e.restoreDiscountCodes.join(",") }).catch(() => {});
       }
       if (giftAdded) {
-        dispatchCartUpdated(await fetchCart().catch(() => ({})));
+        await refreshCart(await fetchCart().catch(() => null));
       }
       return {
         ok: false,
@@ -647,15 +714,31 @@
   }
 
   async function removeGiftByKey(key) {
-    const response = await fetch("/cart/change.js", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: key, quantity: 0 }),
-    });
+    const response = await cartPost("cart/change.js", { id: key, quantity: 0 });
     if (!response.ok) {
       throw new Error(`Unable to remove gift (${response.status}).`);
     }
-    return response.json();
+    lastCart = await response.json();
+    return lastCart;
+  }
+
+  /** Re-issue the gift code for the gifts left in the cart, or clear it. */
+  async function syncGiftCode(cart) {
+    const nonGiftCodes = getExternalDiscountCodes(cart);
+    const remainingGiftVariantIds = getGiftSelections(cart).map((item) => String(item.variant_id));
+    const qualifyingVariantIds = cart.items
+      .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
+      .map((item) => String(item.variant_id));
+    const tierId = computeCartState(cart).activeTier?.id;
+
+    if (remainingGiftVariantIds.length > 0 && tierId && qualifyingVariantIds.length > 0) {
+      const { ok, data } = await requestGiftCode(remainingGiftVariantIds, tierId, qualifyingVariantIds);
+      if (ok) {
+        await cartPost("cart/update.js", { discount: [...nonGiftCodes, data.code].join(",") });
+        return;
+      }
+    }
+    await cartPost("cart/update.js", { discount: nonGiftCodes.join(",") });
   }
 
   /**
@@ -673,75 +756,20 @@
       await ensureConfig();
 
       const cart = await fetchCart();
-      const giftItems = getGiftItems(cart);
-
-      // Find the gift line by selection ID or key
-      let targetKey = null;
-      for (const item of giftItems) {
-        const sel = item.properties?.[GIFT_SELECTION_PROPERTY_KEY];
-        if (sel === selectionIdOrKey || item.key === selectionIdOrKey) {
-          targetKey = item.key;
-          break;
-        }
-      }
-      if (!targetKey) {
+      const target = getGiftItems(cart).find(
+        (item) =>
+          item.properties?.[GIFT_SELECTION_PROPERTY_KEY] === selectionIdOrKey ||
+          item.key === selectionIdOrKey,
+      );
+      if (!target) {
         return { ok: false, error: "Gift not found in cart." };
       }
 
-      await removeGiftByKey(targetKey);
-
-      // After removing, check remaining gifts and recreate the discount code
-      const updatedCart = await fetchCart();
-      const remainingGifts = getGiftItems(updatedCart);
-
-      if (remainingGifts.length > 0) {
-        const remainingGiftVariantIds = getGiftSelections(updatedCart)
-          .map((item) => String(item.variant_id));
-        const qualifyingVariantIds = updatedCart.items
-          .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
-          .map((item) => String(item.variant_id));
-
-        // Determine current active tier for the code request
-        const state = computeCartState(updatedCart);
-        const tierId = state.activeTier?.id;
-
-        if (tierId && qualifyingVariantIds.length > 0) {
-          const codeResponse = await fetch(`${getAppUrl()}/gift-code`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              giftVariantIds: remainingGiftVariantIds,
-              tierId,
-              qualifyingVariantIds,
-            }),
-          });
-          const codeData = await codeResponse.json().catch(() => ({}));
-
-          if (codeResponse.ok && codeData.code) {
-            const nonGiftCodes = (updatedCart.discount_codes || [])
-              .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
-              .map((d) => d.code);
-            await fetch("/cart/update.js", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ discount: [...nonGiftCodes, codeData.code].join(",") }),
-            });
-          }
-        }
-      } else {
-        // No gifts left — remove all BONUS-*/GIFT-* codes
-        const nonGiftCodes = (updatedCart.discount_codes || [])
-          .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
-          .map((d) => d.code);
-        await fetch("/cart/update.js", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ discount: nonGiftCodes.join(",") }),
-        });
-      }
+      await removeGiftByKey(target.key);
+      await syncGiftCode(await fetchCart());
 
       const finalCart = await fetchCart();
-      dispatchCartUpdated(finalCart);
+      await refreshCart(finalCart);
       return { ok: true, cart: finalCart };
     } catch (e) {
       return { ok: false, error: e.message || "Unable to remove gift." };
@@ -750,217 +778,190 @@
     }
   }
 
-  // ─── Cart update dispatch ───────────────────────────────────
-
-  /**
-   * Section ids the theme's cart listeners look up on
-   * event.detail.cart.sections — resolved from the DOM (full
-   * "sections--{theme}__{name}" ids for embedded sections, plain
-   * names for standalone section files).
-   */
-  function cartSectionIds() {
-    const ids = new Set();
-    const markers = ["cart-drawer", "cart-items", "cart-notification", "#main-cart-footer"];
-    for (const sel of markers) {
-      const el = document.querySelector(sel);
-      const sec = el?.closest('[id^="shopify-section-"]');
-      const id = sec?.id?.replace("shopify-section-", "");
-      if (id) ids.add(id);
+  /** Remove every gift line and the gift discount code. */
+  async function removeAllGifts(cart) {
+    for (const gift of getGiftItems(cart)) {
+      try {
+        await removeGiftByKey(gift.key);
+      } catch (e) {
+        console.error("[gift-core] Failed to remove gift:", e);
+      }
     }
-    // Sweep any cart-related section wrappers the markers missed
-    // (embedded "sections--{theme}__{name}" sections, drawer outside
-    // its marker, icon bubble inside the header section, etc.)
-    document.querySelectorAll('[id^="shopify-section-"]').forEach((el) => {
-      const id = el.id.replace("shopify-section-", "");
-      if (/cart|drawer|icon-bubble|live-region/i.test(id)) ids.add(id);
-    });
+    const updatedCart = await fetchCart();
+    await cartPost("cart/update.js", { discount: getExternalDiscountCodes(updatedCart).join(",") });
+    return fetchCart();
+  }
+
+  // ─── Theme cart refresh ─────────────────────────────────────
+
+  // Elements that show cart contents or the cart count in most themes.
+  const CART_MARKERS = [
+    'form[action$="/cart"]',
+    'a[href*="/cart/change"]',
+    'a[href$="/cart"]',
+    "cart-items",
+    "cart-drawer",
+    "cart-drawer-items",
+    "cart-notification",
+    "[data-cart-count]",
+    "[data-cart-items]",
+    "[data-cart-drawer]",
+  ].join(",");
+
+  // State classes and attributes kept across a section swap so an open
+  // drawer stays open.
+  const STATE_CLASSES = ["active", "open", "is-open", "is-active", "is-visible", "drawer--open", "animate"];
+  const STATE_ATTRIBUTES = ["open", "aria-expanded", "aria-hidden", "inert"];
+
+  function getSectionWrappers() {
+    return [...document.querySelectorAll('[id^="shopify-section-"]')];
+  }
+
+  /** IDs of the sections that show cart contents, plus any the merchant added. */
+  function cartSectionIds() {
+    const ids = new Set(getConfig().refreshSections);
+    for (const wrapper of getSectionWrappers()) {
+      const id = wrapper.id.replace("shopify-section-", "");
+      if (/cart|drawer|icon-bubble/i.test(id) || wrapper.querySelector(CART_MARKERS)) {
+        ids.add(id);
+      }
+    }
     return [...ids];
   }
 
-  /** Fetch rendered section HTML keyed by section id. */
-  async function fetchCartSections() {
-    const ids = cartSectionIds();
-    if (!ids.length) return {};
+  /** Fetch rendered section HTML through the Section Rendering API (5 per request). */
+  async function fetchSections(ids) {
     const sections = {};
-    // GET /cart?sections= returns plain cart JSON — the rendered
-    // section HTML (with the shopify-section-* wrapper the theme's
-    // listeners expect) only comes from ?section_id= per section.
-    await Promise.all(ids.map(async (id) => {
+    for (let i = 0; i < ids.length; i += 5) {
+      const batch = ids.slice(i, i + 5);
       try {
-        const res = await fetch(
-          `/cart?section_id=${encodeURIComponent(id)}`,
-          { headers: { Accept: "text/html" } },
-        );
-        if (res.ok) {
-          const html = await res.text();
-          if (html) sections[id] = html;
-        }
-      } catch (e) { /* ignore */ }
-    }));
+        const url = `${window.location.pathname}?sections=${encodeURIComponent(batch.join(","))}`;
+        const response = await nativeFetch(url, { headers: { Accept: "application/json" } });
+        if (!response.ok) continue;
+        Object.assign(sections, await response.json());
+      } catch (e) {
+        console.warn("[gift-core] Section fetch failed:", batch, e);
+      }
+    }
     return sections;
   }
 
-  function dispatchCartUpdated(cart) {
-    const finish = (c) => {
-      const detail = { cart: c };
-      document.dispatchEvent(new CustomEvent("cart:refresh", { detail }));
-      document.dispatchEvent(new CustomEvent("cart:updated", { detail }));
-      document.dispatchEvent(new CustomEvent("cart:change", { detail }));
-      for (const cb of cartUpdateSubscribers) {
-        try { cb(c); } catch (e) { console.warn("[gift-core] subscriber error:", e); }
-      }
-      // Refresh Dawn storefront sections (cart drawer + cart icon bubble)
-      refreshDawnSections(c);
-    };
-
-    // Dawn listeners read event.detail.cart.sections[sectionId] — a
-    // plain /cart.js payload has no sections and crashes them, so
-    // attach a rendered-sections map before dispatching.
-    if (cart && cart.sections == null) {
-      fetchCartSections()
-        .catch(() => ({}))
-        .then((sections) => {
-          cart.sections = sections || {};
-          finish(cart);
-        });
-      return;
-    }
-    finish(cart);
+  function stateKey(el, root) {
+    if (el.id) return `#${el.id}`;
+    const sameTag = [...root.getElementsByTagName(el.tagName)];
+    return `${el.tagName}:${sameTag.indexOf(el)}`;
   }
 
+  function findByStateKey(key, root) {
+    if (key.startsWith("#")) return root.querySelector(`#${CSS.escape(key.slice(1))}`);
+    const [tag, index] = key.split(":");
+    return root.getElementsByTagName(tag)[Number(index)] || null;
+  }
+
+  function captureOpenState(root) {
+    const selector = [
+      ...STATE_CLASSES.map((cls) => `.${cls}`),
+      "[open]",
+      '[aria-expanded="true"]',
+      'dialog',
+    ].join(",");
+    return [...root.querySelectorAll(selector)].map((el) => ({
+      key: stateKey(el, root),
+      classes: STATE_CLASSES.filter((cls) => el.classList.contains(cls)),
+      attributes: Object.fromEntries(
+        STATE_ATTRIBUTES.filter((name) => el.hasAttribute(name)).map((name) => [name, el.getAttribute(name)]),
+      ),
+      modal: el instanceof HTMLDialogElement && el.open && el.matches(":modal"),
+      dialogOpen: el instanceof HTMLDialogElement && el.open,
+    }));
+  }
+
+  function restoreOpenState(root, states) {
+    for (const state of states) {
+      const el = findByStateKey(state.key, root);
+      if (!el) continue;
+      state.classes.forEach((cls) => el.classList.add(cls));
+      for (const [name, value] of Object.entries(state.attributes)) {
+        if (name !== "open" || !(el instanceof HTMLDialogElement)) el.setAttribute(name, value);
+      }
+      if (el instanceof HTMLDialogElement && state.dialogOpen && !el.open) {
+        try {
+          state.modal ? el.showModal() : el.show();
+        } catch {
+          el.setAttribute("open", "");
+        }
+      }
+    }
+  }
+
+  function swapSection(id, html) {
+    const wrapper = document.getElementById(`shopify-section-${id}`);
+    if (!wrapper || typeof html !== "string" || !html) return false;
+
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const fresh = doc.getElementById(`shopify-section-${id}`) || doc.querySelector('[id^="shopify-section-"]') || doc.body;
+    const openState = captureOpenState(wrapper);
+
+    // Keep the live app blocks (and their state) instead of the fresh copies.
+    fresh.querySelectorAll("[data-gift-app][id]").forEach((el) => {
+      const live = document.getElementById(el.id);
+      if (live && wrapper.contains(live)) el.replaceWith(live);
+    });
+
+    wrapper.replaceChildren(...fresh.childNodes);
+    restoreOpenState(wrapper, openState);
+    return true;
+  }
+
+  function dispatchCartEvents(cart) {
+    const detail = { cart };
+    ["gift:cart-updated", "cart:refresh", "cart:updated", "cart:change"].forEach((name) => {
+      document.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
+    });
+  }
+
+  let refreshing = false;
+
   /**
-   * Refresh Dawn theme storefront sections after a cart mutation.
-   * Dawn's cart drawer and cart-icon-bubble are rendered as sections
-   * and don't react to cart:updated events — they need to be re-fetched
-   * and swapped into the DOM.
+   * Bring the theme's cart UI up to date after a gift change.
+   * Modes (block setting): "auto" re-renders cart sections, "events" only
+   * dispatches cart events for themes that refresh themselves, "reload"
+   * reloads the page.
    */
-  async function refreshDawnSections(cart) {
-    // Prefer rendered sections already attached to the cart payload —
-    // keyed by the real section ids (handles embedded
-    // "sections--{theme}__{name}" sections that bare-name fetches miss).
-    if (cart?.sections && typeof cart.sections === "object") {
-      for (const [key, html] of Object.entries(cart.sections)) {
-        if (typeof html !== "string" || !html) continue;
-        try {
-          const wrapper = document.getElementById(`shopify-section-${key}`);
-          if (!wrapper) continue;
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          const fresh = doc.querySelector('[id^="shopify-section-"]') || doc.body;
-          wrapper.innerHTML = fresh.innerHTML;
-        } catch (e) {
-          console.warn("[gift-core] Section swap failed for", key, e);
-        }
-      }
+  async function refreshCart(cart) {
+    const { refreshMode } = getConfig();
+    if (refreshMode === "reload") {
+      window.location.reload();
+      return;
     }
 
-    // Cart icon bubble (header cart count)
+    refreshing = true;
     try {
-      const bubble = document.getElementById("cart-icon-bubble");
-      if (bubble) {
-        // Dawn uses the "sections" parameter which returns JSON with section HTML.
-        // Fall back to "section_id" which returns raw HTML.
-        let bubbleHtml = null;
-        try {
-          const res = await fetch("/cart?sections=cart-icon-bubble", {
-            headers: { Accept: "application/json" },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            bubbleHtml = data?.["cart-icon-bubble"] || null;
-          }
-        } catch {}
+      cart = cart && typeof cart.item_count === "number" ? cart : await fetchCart().catch(() => null);
+      let swapped = 0;
+      let ids = [];
 
-        if (!bubbleHtml) {
-          const res = await fetch("/cart?section_id=cart-icon-bubble", {
-            headers: { Accept: "text/html" },
-          });
-          if (res.ok) {
-            bubbleHtml = await res.text();
-          }
-        }
-
-        if (bubbleHtml) {
-          const doc = new DOMParser().parseFromString(bubbleHtml, "text/html");
-          const newBubble = doc.querySelector("#cart-icon-bubble");
-          if (newBubble) {
-            bubble.innerHTML = newBubble.innerHTML;
-          } else {
-            // Section HTML may be the inner content directly
-            bubble.innerHTML = bubbleHtml;
-          }
+      if (refreshMode !== "events") {
+        ids = cartSectionIds();
+        const sections = ids.length > 0 ? await fetchSections(ids) : {};
+        // Some themes read rendered sections from the cart event payload.
+        if (cart) cart.sections = sections;
+        for (const id of ids) {
+          if (sections[id] && swapSection(id, sections[id])) swapped++;
         }
       }
-    } catch (e) {
-      console.warn("[gift-core] Cart icon bubble refresh failed:", e);
-    }
 
-    // Cart drawer items
-    try {
-      const drawerItems = document.querySelector("cart-drawer-items");
-      if (drawerItems) {
-        let drawerHtml = null;
-        try {
-          const res = await fetch("/cart?sections=cart-drawer", {
-            headers: { Accept: "application/json" },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            drawerHtml = data?.["cart-drawer"] || null;
-          }
-        } catch {}
-
-        if (!drawerHtml) {
-          const res = await fetch("/cart?section_id=cart-drawer", {
-            headers: { Accept: "text/html" },
-          });
-          if (res.ok) {
-            drawerHtml = await res.text();
-          }
-        }
-
-        if (drawerHtml) {
-          const doc = new DOMParser().parseFromString(drawerHtml, "text/html");
-          const newDrawer = doc.querySelector("cart-drawer-items");
-          if (newDrawer) {
-            drawerItems.innerHTML = newDrawer.innerHTML;
-          } else {
-            drawerItems.innerHTML = drawerHtml;
-          }
-        }
+      if (cart) dispatchCartEvents(cart);
+      for (const cb of cartUpdateSubscribers) {
+        try { cb(cart); } catch (e) { console.warn("[gift-core] subscriber error:", e); }
       }
-    } catch (e) {
-      console.warn("[gift-core] Cart drawer refresh failed:", e);
-    }
 
-    // Re-init gift widget in all containers after section swaps
-    if (window.giftWidget && typeof window.giftWidget._init === "function") {
-      try { await window.giftWidget._init(); } catch (e) {
-        console.warn("[gift-core] Gift widget re-init failed:", e);
+      // Nothing could be refreshed in place — reload so the cart is never stale.
+      if (refreshMode === "auto" && swapped === 0 && isCartPage()) {
+        window.location.reload();
       }
-    }
-
-    // Cart page items (if on /cart)
-    try {
-      const cartItemsDiv = document.querySelector(
-        "[data-id^='template--'][data-id*='cart-items']",
-      );
-      const sectionId = cartItemsDiv?.getAttribute("data-id");
-      if (sectionId) {
-        const res = await fetch(`${window.location.pathname}?section_id=${sectionId}`, {
-          headers: { Accept: "text/html" },
-        });
-        if (res.ok) {
-          const text = await res.text();
-          const doc = new DOMParser().parseFromString(text, "text/html");
-          const newItems = doc.querySelector(`[data-id="${sectionId}"]`);
-          const oldItems = document.querySelector(`[data-id="${sectionId}"]`);
-          if (newItems && oldItems) {
-            oldItems.innerHTML = newItems.innerHTML;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[gift-core] Cart page section refresh failed:", e);
+    } finally {
+      refreshing = false;
     }
   }
 
@@ -972,13 +973,153 @@
     };
   }
 
-  async function refresh() {
-    configLoaded = false;
-    configLoading = null;
-    await ensureConfig().catch(() => {});
-    const cart = await fetchCart();
-    dispatchCartUpdated(cart);
-    return computeCartState(cart);
+  // ─── Cart watcher ──────────────────────────────────────────
+  // Notices cart changes made by the theme (quantity buttons, product forms)
+  // and stops customers from raising a gift line's quantity. Installed once,
+  // chaining whatever fetch wrapper the theme or other apps already set up.
+
+  const CART_MUTATION_PATTERN = /\/cart\/(add|change|update|clear)(\.js)?(\?|$)/;
+
+  function notifyCartMutation(url) {
+    if (refreshing || mutationLock) return;
+    for (const cb of cartMutationSubscribers) {
+      try { cb(url); } catch (e) { console.warn("[gift-core] cart mutation subscriber error:", e); }
+    }
+  }
+
+  function onCartMutation(cb) {
+    cartMutationSubscribers.push(cb);
+    return () => {
+      const idx = cartMutationSubscribers.indexOf(cb);
+      if (idx >= 0) cartMutationSubscribers.splice(idx, 1);
+    };
+  }
+
+  function parseBody(body) {
+    if (!body) return null;
+    if (typeof body === "string") {
+      try { return JSON.parse(body); } catch { return null; }
+    }
+    if (body instanceof FormData) {
+      const obj = {};
+      for (const [key, value] of body.entries()) {
+        if (key.endsWith("[]")) {
+          if (!obj[key]) obj[key] = [];
+          obj[key].push(value);
+        } else {
+          obj[key] = value;
+        }
+      }
+      return obj;
+    }
+    return null;
+  }
+
+  /** Returns a replacement request body when it would raise a gift quantity, else null. */
+  function capGiftQuantities(url, parsed) {
+    const gifts = getGiftItems(lastCart);
+    if (!parsed || gifts.length === 0) return null;
+    const giftQtyByKey = new Map(gifts.map((item) => [item.key, item.quantity]));
+    const giftVariantIds = new Set(gifts.map((item) => String(item.variant_id)));
+
+    if (/\/cart\/change/.test(url)) {
+      const key = parsed.id && giftQtyByKey.has(parsed.id)
+        ? parsed.id
+        : parsed.line ? lastCart.items[Number(parsed.line) - 1]?.key : null;
+      if (key && giftQtyByKey.has(key) && Number(parsed.quantity) > giftQtyByKey.get(key)) {
+        return { ...parsed, quantity: giftQtyByKey.get(key) };
+      }
+    }
+
+    if (/\/cart\/update/.test(url) && parsed.updates) {
+      let modified = false;
+      const updates = Array.isArray(parsed.updates) ? [...parsed.updates] : { ...parsed.updates };
+      if (Array.isArray(updates)) {
+        lastCart.items.forEach((item, index) => {
+          if (giftQtyByKey.has(item.key) && Number(updates[index]) > item.quantity) {
+            updates[index] = item.quantity;
+            modified = true;
+          }
+        });
+      } else {
+        for (const key of Object.keys(updates)) {
+          if (giftQtyByKey.has(key) && Number(updates[key]) > giftQtyByKey.get(key)) {
+            updates[key] = giftQtyByKey.get(key);
+            modified = true;
+          }
+        }
+      }
+      if (modified) return { ...parsed, updates };
+    }
+
+    if (/\/cart\/add/.test(url) && Array.isArray(parsed.items)) {
+      // A gift variant bought again is a normal paid line — only the gift
+      // line itself (with the _gift property) is capped.
+      let modified = false;
+      const items = parsed.items.map((item) => {
+        if (item.properties?.[GIFT_PROPERTY_KEY] && giftVariantIds.has(String(item.id)) && item.quantity > 1) {
+          modified = true;
+          return { ...item, quantity: 1 };
+        }
+        return item;
+      });
+      if (modified) return { ...parsed, items };
+    }
+
+    return null;
+  }
+
+  function installCartWatcher() {
+    if (window.fetch.__giftCartWatcher) return;
+    const previousFetch = window.fetch;
+
+    const watchedFetch = async function (input, init) {
+      const url = typeof input === "string" ? input : input?.url || "";
+      if (!CART_MUTATION_PATTERN.test(url)) return previousFetch.call(this, input, init);
+
+      const capped = typeof init?.body === "string" ? capGiftQuantities(url, parseBody(init.body)) : null;
+      const response = await previousFetch.call(
+        this,
+        input,
+        capped ? { ...init, body: JSON.stringify(capped) } : init,
+      );
+      if (response.ok) setTimeout(() => notifyCartMutation(url), 0);
+      return response;
+    };
+    watchedFetch.__giftCartWatcher = true;
+    window.fetch = watchedFetch;
+
+    // XHR-based themes: observe finished requests without patching XHR.
+    if (typeof PerformanceObserver !== "undefined") {
+      try {
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (entry.initiatorType === "xmlhttprequest" && CART_MUTATION_PATTERN.test(entry.name)) {
+              notifyCartMutation(entry.name);
+            }
+          }
+        }).observe({ type: "resource", buffered: false });
+      } catch {
+        // Resource timing is unavailable — fetch-based detection still works.
+      }
+    }
+
+    // Classic cart forms that post updates[] directly.
+    document.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (!/\/cart(\/update)?\/?$/.test(form.getAttribute("action") || "")) return;
+      const gifts = getGiftItems(lastCart);
+      if (gifts.length === 0) return;
+      const updates = new FormData(form).getAll("updates[]");
+      const raised = lastCart.items.some((item, index) =>
+        gifts.some((gift) => gift.key === item.key) && Number(updates[index]) > item.quantity,
+      );
+      if (raised) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
   }
 
   // ─── Public API ─────────────────────────────────────────────
@@ -991,11 +1132,20 @@
     GIFT_SELECTION_PROPERTY_KEY,
     // Config
     ensureConfig,
+    getConfig,
     getTiers: () => tiers,
     getSettings: () => settings,
     getShopDomain,
+    // Routes & currency
+    storefrontUrl,
+    isCartPage,
+    toPresentment,
+    formatPrice,
+    escapeHtml,
     // Cart helpers (also exposed for UI scripts that need them)
     fetchCart,
+    getLastCart: () => lastCart,
+    isGiftCode,
     getExternalDiscountCodes,
     getGiftItems,
     getGiftSelections,
@@ -1008,6 +1158,8 @@
     findActiveTier,
     findNextTier,
     computeCartState,
+    fetchGiftProducts,
+    cartSectionIds,
     // Public API
     getCartState,
     getEligibility,
@@ -1015,12 +1167,13 @@
     addGift,
     removeGift,
     removeGiftByKey,
-    refresh,
+    removeAllGifts,
+    refreshCart,
     onCartUpdate,
-    // Utility
-    formatPrice(cents) {
-      return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(cents / 100);
-    },
+    onCartMutation,
     isMutationLocked: () => mutationLock,
+    isRefreshing: () => refreshing,
   };
+
+  installCartWatcher();
 })();

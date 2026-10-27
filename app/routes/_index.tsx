@@ -4,10 +4,8 @@ import {
   Card,
   BlockStack,
   Text,
-  Link,
   Button,
   Grid,
-  Badge,
 } from "@shopify/polaris";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Link as RemixLink } from "@remix-run/react";
@@ -51,8 +49,8 @@ export default function Index() {
                       Gift Tiers
                     </Text>
                     <Text as="p" tone="subdued">
-                      Configure threshold amounts and gift percentages. Import the
-                      Davines preset (57 tiers) or create custom tiers.
+                      Configure threshold amounts and gift percentages. Start from
+                      the sample tiers or create your own.
                     </Text>
                     <RemixLink to="/app/tiers">
                       <Button fullWidth>Manage Tiers</Button>
@@ -112,7 +110,7 @@ export default function Index() {
                     3. Customer selects a free gift (price ≤ calculated max)
                   </Text>
                   <Text as="p">
-                    4. Gift is added to cart with 100% discount via Cart Transform
+                    4. Gift is added to cart and made free with a single-use discount code
                   </Text>
                   <Text as="p">
                     5. If promo code drops total below threshold, gift is auto-removed

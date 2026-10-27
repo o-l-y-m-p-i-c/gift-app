@@ -1,30 +1,80 @@
-# Gift Threshold App
+# Gift Threshold
 
-Shopify Custom App — подарки за достижение порога суммы корзины.
+A public Shopify app that gives customers a free gift when their cart reaches a spending threshold. Each tier sets a minimum cart total and a gift budget (a percentage of that total). Customers pick gifts up to that budget on the cart page, in the cart drawer, or from a product page.
 
-## Концепция
+## How it works
 
-Пользователь набирает товары на определённую сумму → получает возможность выбрать бесплатный подарок из каталога. Максимальная цена подарка рассчитывается как процент от пороговой суммы.
+1. The merchant sets gift tiers in the app admin (or loads the sample tiers).
+2. The theme blocks show the customer's progress and the gifts they can choose.
+3. When a gift is chosen, the app creates a single-use BXGY discount code that makes exactly the chosen gifts free, adds the gift to the cart and applies the code.
+4. If the cart drops below the tier, or a promo code stops the gift being free, the gift is removed.
+5. `orders/create` records each gift in the History page.
 
-## Пример
+Tier amounts are stored in the shop currency. The storefront converts them to the customer's currency with `Shopify.currency.rate`.
 
-| Порог | Процент | Макс. цена подарка |
-|-------|---------|-------------------|
-| 130€  | 9.0%    | 11.70€            |
-| 140€  | 9.5%    | 13.30€            |
-| 200€  | 12.0%   | 24.00€            |
+## Pricing
 
-## Базовая версия (любой тариф Shopify)
+- 14-day free trial
+- Free on Shopify development stores
+- $9.99 USD every 30 days on production stores, billed through the Shopify invoice
 
-- **Виджет выбора подарка** → страница корзины (Theme App Extension)
-- **Скидка 100% на подарок** → чекаут (Shopify Function: Cart Transform)
-- **Admin UI** → настройка порогов и процентов (Remix app)
-- **История** → webhook orders/create
+The plan name, price, currency and trial length come from env vars (see below).
 
-## Технологии
+## Setting up a new app
 
-- Shopify CLI + Remix (Node.js)
-- Theme App Extension (App Block)
-- Shopify Functions (Cart Transform, Rust)
-- Prisma + SQLite
-- Storefront API (запрос товаров-подарков)
+1. **Create the app** in the Partner Dashboard (or Dev Dashboard) and copy its client ID and client secret.
+2. **Link the config:** run `shopify app config link` and pick the new app. This fills `client_id` and the URLs in `shopify.app.toml`. Or replace the `YOUR_CLIENT_ID` and `YOUR_APP_HOST` placeholders by hand.
+3. **Set env vars** on the host (see `.env.example`): `DATABASE_URL`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES`, and optionally the `BILLING_*` vars.
+4. **Deploy the server.** `render.yaml` deploys to Render on an always-on plan, runs `prisma migrate deploy` on start, and checks `/healthz`. The `Dockerfile` does the same anywhere else.
+5. **Deploy the app config and theme extension:** `npm run shopify:deploy`. This registers the webhooks, including the GDPR compliance webhooks, the app proxy and the scopes.
+6. **Partner Dashboard settings:**
+   - **Pricing:** use manual pricing (Billing API), not Managed Pricing. Otherwise subscription requests fail.
+   - **Protected customer data:** request access for `orders/create` (Level 1 is enough; the app reads no names, emails or addresses).
+   - **App listing:** describe the four scopes: `read_products`, `read_discounts`, `write_discounts`, `read_orders`.
+
+### Moving an existing database
+
+The schema is now managed with Prisma migrations. For a database that was created earlier with `prisma db push`, mark the initial migration as applied once before the first deploy:
+
+```bash
+npx prisma migrate resolve --applied 20261027000000_init
+```
+
+## Theme setup
+
+In **Online Store → Customize**:
+
+- **Cart page:** add the **Gift Widget** block.
+- **Product page:** add the **Add as Gift** block.
+- **Cart drawer:** add the **Gift Drawer Widget** block if the drawer section supports app blocks. Otherwise enable the **Gift Drawer Embed** app embed.
+
+The blocks work on any Online Store 2.0 theme. Colors follow the section's color scheme, and the button color and corner radius are block settings. If a theme needs help, each block has **Advanced** settings:
+
+| Setting | Use it when |
+| --- | --- |
+| Cart refresh after a gift change | The cart doesn't update after adding a gift. Pick "Reload the page". |
+| Extra section IDs to refresh | A cart count or drawer on the page isn't refreshed automatically. |
+| Cart drawer selector / position | The drawer embed can't find the theme's cart drawer. |
+| Product form selector | The product button doesn't follow the selected variant. |
+| App proxy path | The app proxy URL was renamed in Shopify admin. |
+
+After every gift change the app dispatches `gift:cart-updated` (and `cart:refresh`, `cart:updated`, `cart:change`) on `document` with `{ cart }` in `detail`, so theme code can react.
+
+## Development
+
+```bash
+npm install
+npm run shopify:dev     # Shopify CLI dev server with tunnel
+npm run typecheck
+npm run lint
+npm test
+```
+
+CI (`.github/workflows/ci.yml`) runs typecheck, lint, tests and build on every push and pull request.
+
+## Project layout
+
+- `app/` — Remix admin app, storefront API routes (`api.*`, served through the app proxy) and webhooks
+- `extensions/gift-widget/` — theme app extension (blocks, scripts, styles, translations)
+- `prisma/` — schema and migrations
+- `tests/` — storefront runtime tests (jsdom)

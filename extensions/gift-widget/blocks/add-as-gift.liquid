@@ -20,25 +20,28 @@
 {% if loading_label == blank %}{% assign loading_label = 'gift.product.loading_label' | t %}{% endif %}
 {% assign error_label = block.settings.error_label %}
 {% if error_label == blank %}{% assign error_label = 'gift.product.error_label' | t %}{% endif %}
+{% assign current_variant = product.selected_or_first_available_variant %}
+{% capture align_style %}text-align: {{ block.settings.alignment }};{% endcapture %}
 
-<div id="add-as-gift-container"
+<div id="add-as-gift-{{ block.id }}"
      class="add-as-gift {% if block.settings.full_width %}add-as-gift--full-width{% endif %}"
-     data-shop="{{ request.host }}"
+     data-gift-product-button
      data-product-id="{{ product.id }}"
-     data-variant-id="{{ product.selected_or_first_available_variant.id }}"
-     data-variant-price="{{ product.selected_or_first_available_variant.price }}"
-     data-variant-available="{{ product.selected_or_first_available_variant.available }}"
-     data-button-label="{{ btn_label }}"
-     data-disabled-label="{{ disabled_label }}"
-     data-over-budget-label="{{ over_budget_label }}"
-     data-unavailable-label="{{ unavailable_label }}"
-     data-excluded-label="{{ excluded_label }}"
-     data-loading-label="{{ loading_label }}"
-     data-error-label="{{ error_label }}"
-     data-show-remaining="{{ block.settings.show_remaining | default: true }}"
-     style="text-align: {{ block.settings.alignment }};"
+     data-variant-id="{{ current_variant.id }}"
+     data-variant-price="{{ current_variant.price }}"
+     data-variant-available="{{ current_variant.available }}"
+     data-product-form-selector="{{ block.settings.product_form_selector | escape }}"
+     data-button-label="{{ btn_label | escape }}"
+     data-disabled-label="{{ disabled_label | escape }}"
+     data-over-budget-label="{{ over_budget_label | escape }}"
+     data-unavailable-label="{{ unavailable_label | escape }}"
+     data-excluded-label="{{ excluded_label | escape }}"
+     data-loading-label="{{ loading_label | escape }}"
+     data-error-label="{{ error_label | escape }}"
+     data-show-remaining="{{ block.settings.show_remaining }}"
+     {% render 'gift-app-config', block: block, extra_style: align_style %}
+     {{ block.shopify_attributes }}
 >
-
   <button type="button"
           class="add-as-gift__button {% if block.settings.button_style == 'secondary' %}add-as-gift__button--secondary{% else %}add-as-gift__button--primary{% endif %} {% if block.settings.full_width %}add-as-gift__button--full{% endif %}"
           disabled
@@ -52,23 +55,23 @@
   {% if block.settings.show_remaining %}
     <p class="add-as-gift__remaining" style="display:none;"></p>
   {% endif %}
+
+  <script type="application/json" data-gift-product-variants>
+    {{ product.variants | json }}
+  </script>
+
+  <script type="application/json" data-gift-product-translations>
+    {
+      "added": {{ 'gift.product.added' | t | json }},
+      "remaining_budget": {{ 'gift.product.remaining_budget' | t | json }},
+      "add_more": {{ 'gift.product.add_more' | t | json }},
+      "promo_choice_title": {{ 'gift.promo_choice_title' | t | json }},
+      "promo_choice_message": {{ 'gift.promo_choice_message' | t | json }},
+      "promo_keep": {{ 'gift.promo_keep' | t | json }},
+      "promo_use_gift": {{ 'gift.promo_use_gift' | t | json }}
+    }
+  </script>
 </div>
-
-<script type="application/json" data-gift-product-variants>
-  {{ product.variants | json }}
-</script>
-
-<script type="application/json" data-gift-product-translations>
-  {
-    "added": {{ 'gift.product.added' | t | json }},
-    "remaining_budget": {{ 'gift.product.remaining_budget' | t | json }},
-    "add_more": {{ 'gift.product.add_more' | t | json }},
-    "promo_choice_title": {{ 'gift.promo_choice_title' | t | json }},
-    "promo_choice_message": {{ 'gift.promo_choice_message' | t | json }},
-    "promo_keep": {{ 'gift.promo_keep' | t | json }},
-    "promo_use_gift": {{ 'gift.promo_use_gift' | t | json }}
-  }
-</script>
 
 <script src="{{ 'gift-core.js' | asset_url }}" defer></script>
 <script src="{{ 'product-gift-button.js' | asset_url }}" defer></script>
@@ -79,12 +82,18 @@
   "name": "Add as Gift",
   "target": "section",
   "enabled_on": {
-    "templates": ["product"]
+    "templates": [
+      "product"
+    ]
   },
   "settings": [
     {
+      "type": "paragraph",
+      "content": "Adds an \"Add as gift\" button to product pages. Customers can add the selected variant as a free gift when their cart reaches a gift tier and the price fits the remaining gift budget."
+    },
+    {
       "type": "header",
-      "content": "Button"
+      "content": "Labels"
     },
     {
       "type": "text",
@@ -99,17 +108,22 @@
     {
       "type": "text",
       "id": "over_budget_label",
-      "label": "Label when variant exceeds remaining budget"
+      "label": "Label when the variant exceeds the remaining budget"
     },
     {
       "type": "text",
       "id": "unavailable_label",
-      "label": "Label when variant is unavailable"
+      "label": "Label when the variant is unavailable"
+    },
+    {
+      "type": "text",
+      "id": "excluded_label",
+      "label": "Label when the product is excluded from gifts"
     },
     {
       "type": "text",
       "id": "loading_label",
-      "label": "Label while adding gift"
+      "label": "Label while adding the gift"
     },
     {
       "type": "text",
@@ -125,8 +139,14 @@
       "id": "button_style",
       "label": "Button style",
       "options": [
-        { "value": "primary", "label": "Primary" },
-        { "value": "secondary", "label": "Secondary" }
+        {
+          "value": "primary",
+          "label": "Primary"
+        },
+        {
+          "value": "secondary",
+          "label": "Secondary"
+        }
       ],
       "default": "primary"
     },
@@ -134,17 +154,25 @@
       "type": "checkbox",
       "id": "full_width",
       "label": "Make button full width",
-      "default": false,
-      "info": "Button stretches to fill available width (flex: 1 / width: 100%)"
+      "default": false
     },
     {
       "type": "select",
       "id": "alignment",
       "label": "Alignment",
       "options": [
-        { "value": "left", "label": "Left" },
-        { "value": "center", "label": "Center" },
-        { "value": "right", "label": "Right" }
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "center",
+          "label": "Center"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
       ],
       "default": "left"
     },
@@ -155,8 +183,74 @@
       "default": true
     },
     {
-      "type": "paragraph",
-      "content": "This block adds an 'Add as gift' button to product pages. Customers can add the current variant as a free gift when their cart qualifies for a gift tier and the variant price fits the remaining gift budget. Configure gift tiers in the Gift Threshold app."
+      "type": "text",
+      "id": "product_form_selector",
+      "label": "Product form selector",
+      "info": "Optional CSS selector of the theme's add-to-cart form, used to read the selected variant. Detected automatically when empty."
+    },
+    {
+      "type": "header",
+      "content": "Style"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Button color",
+      "default": "#1c1c1c"
+    },
+    {
+      "type": "color",
+      "id": "accent_text_color",
+      "label": "Button text color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "range",
+      "id": "corner_radius",
+      "label": "Corner radius",
+      "min": 0,
+      "max": 24,
+      "step": 1,
+      "unit": "px",
+      "default": 12
+    },
+    {
+      "type": "header",
+      "content": "Advanced"
+    },
+    {
+      "type": "select",
+      "id": "refresh_mode",
+      "label": "Cart refresh after a gift change",
+      "options": [
+        {
+          "value": "auto",
+          "label": "Re-render cart sections (recommended)"
+        },
+        {
+          "value": "events",
+          "label": "Theme cart events only"
+        },
+        {
+          "value": "reload",
+          "label": "Reload the page"
+        }
+      ],
+      "default": "auto",
+      "info": "Choose \"Reload the page\" if the cart doesn't update after adding a gift on your theme."
+    },
+    {
+      "type": "text",
+      "id": "refresh_sections",
+      "label": "Extra section IDs to refresh",
+      "info": "Comma-separated section IDs the app should also re-render, e.g. header,cart-drawer."
+    },
+    {
+      "type": "text",
+      "id": "proxy_path",
+      "label": "App proxy path",
+      "default": "/apps/gift-threshold",
+      "info": "Change only if you renamed the app proxy URL in Shopify admin."
     }
   ]
 }

@@ -22,6 +22,7 @@ import {
   fetchCollectionsForPicker,
   fetchProductTagsForPicker,
 } from "~/models/settings.server";
+import { invalidateGiftProducts } from "~/models/gift-products.server";
 import { authenticate } from "~/shopify.server";
 
 type CollectionInfo = {
@@ -50,13 +51,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
     collections,
     tags,
-    shopId,
   });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
+  const { session } = await authenticate.admin(request);
+  const shopId = session.shop;
   const formData = await request.formData();
-  const shopId = formData.get("shopId") as string;
   const useTotalAfterDiscounts = formData.get("useTotalAfterDiscounts") === "true";
   const showLevelUpNotification = formData.get("showLevelUpNotification") === "true";
   const showRemovalNotification = formData.get("showRemovalNotification") === "true";
@@ -78,12 +79,13 @@ export async function action({ request }: ActionFunctionArgs) {
     excludedCollections,
     excludedTags,
   });
+  invalidateGiftProducts(shopId);
 
   return json({ success: true, message: "Settings saved" });
 }
 
 export default function SettingsPage() {
-  const { settings, collections, tags, shopId } = useLoaderData<typeof loader>();
+  const { settings, collections, tags } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
 
@@ -155,7 +157,6 @@ export default function SettingsPage() {
 
   const handleSave = () => {
     const formData = new FormData();
-    formData.append("shopId", shopId);
     formData.append("active", String(active));
     formData.append("useTotalAfterDiscounts", String(thresholdMode[0] === "after"));
     formData.append("showLevelUpNotification", String(notifications.includes("levelUp")));

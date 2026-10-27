@@ -1,18 +1,17 @@
 /**
- * Gift Drawer Widget — Compact gift budget widget for the Dawn cart drawer.
+ * Gift Drawer Widget — Compact gift budget widget for the theme's cart drawer.
  *
  * Uses the shared gift-core.js runtime (window.giftApp) for:
  *   - cart fetching
  *   - tier/budget calculations
- *   - cart update events
+ *   - gift products and cart update events
  *
  * This file handles:
- *   - Mounting a compact widget before .drawer__footer
- *   - Progress bar to first/next tier
- *   - Budget summary (used / remaining)
- *   - CTA link to /cart
+ *   - Finding the theme's cart drawer (block setting, or common markup)
+ *   - Mounting a compact widget at the top of the drawer or above its footer
+ *   - Progress scale, budget summary, CTA link to the cart page
  *   - Optional 3-4 product preview
- *   - Re-mounting after Dawn section replacement
+ *   - Re-mounting after the theme re-renders the drawer
  */
 
 (function () {
@@ -25,6 +24,38 @@
     return;
   }
 
+  const esc = G.escapeHtml;
+
+  // Cart drawers in common themes, tried in order when no selector is set.
+  const DRAWER_CANDIDATES = [
+    "cart-drawer",
+    "cart-drawer-component",
+    "#CartDrawer",
+    "#cart-drawer",
+    "#sidebar-cart",
+    "#mini-cart",
+    "[data-cart-drawer]",
+    ".cart-drawer",
+    ".drawer--cart",
+    ".mini-cart",
+  ];
+  const CONTENT_CANDIDATES = [
+    "cart-drawer-items",
+    ".cart-drawer__items",
+    ".drawer__content",
+    ".drawer__body",
+    ".cart-drawer__body",
+    ".cart-drawer__content",
+    "[data-cart-items]",
+  ];
+  const FOOTER_CANDIDATES = [
+    ".drawer__footer",
+    '[slot="footer"]',
+    ".cart-drawer__footer",
+    ".mini-cart__footer",
+    "footer",
+  ];
+
   // ─── State ──────────────────────────────────────────────────
 
   let sourceContainer = null;
@@ -32,7 +63,7 @@
   let observer = null;
   let renderDebounce = null;
   let isRendering = false;
-  let lastCart = null;
+  let listening = false;
 
   // ─── Translations ──────────────────────────────────────────
 
@@ -65,7 +96,7 @@
 
   function getSetting(key, fallback) {
     if (!sourceContainer) return fallback;
-    return sourceContainer.dataset[key] ?? fallback;
+    return sourceContainer.dataset[key] || fallback;
   }
 
   function getBoolSetting(key, fallback) {
@@ -75,108 +106,105 @@
     return fallback;
   }
 
+  // ─── Finding the drawer ────────────────────────────────────
+
+  function findSourceContainer() {
+    // Prefer the block (inside the drawer section) over the app embed
+    return document.querySelector("[data-gift-drawer-widget]:not([data-gift-embed-mode])") ||
+      document.querySelector("[data-gift-drawer-widget]");
+  }
+
+  function firstMatch(root, selectors) {
+    for (const selector of selectors) {
+      try {
+        const el = root.querySelector(selector);
+        if (el) return el;
+      } catch {
+        // Invalid merchant selector — skip it
+      }
+    }
+    return null;
+  }
+
+  function findDrawer() {
+    const custom = getSetting("drawerSelector", "");
+    return firstMatch(document, custom ? [custom] : DRAWER_CANDIDATES);
+  }
+
   // ─── Checkout redirect ─────────────────────────────────────
-  // Delegated capture-phase listener: survives Prestige drawer DOM replacement.
-  // When the merchant toggle "redirect_checkout" is enabled, clicking the
-  // cart-drawer checkout button navigates to /cart instead of submitting.
+  // Optional: the drawer's checkout button opens the cart page instead, so
+  // customers see the gift selector before checking out.
   function handleCheckoutClick(event) {
-    const target = event.target;
-    if (!target || !target.closest) return;
-
-    const checkoutButton = target.closest('cart-drawer button[name="checkout"], cart-drawer [name="checkout"]');
-    if (!checkoutButton) return;
-
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
     const container = sourceContainer || findSourceContainer();
-    if (!container) return;
+    if (!container || container.dataset.redirectCheckout !== "true") return;
 
-    const enabled = container.dataset.redirectCheckout;
-    if (enabled !== "true") return;
+    const drawer = findDrawer();
+    const checkoutButton = target.closest('[name="checkout"], a[href*="/checkout"]');
+    if (!drawer || !checkoutButton || !drawer.contains(checkoutButton)) return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    window.location.href = "/cart";
+    window.location.href = G.storefrontUrl("cart");
   }
 
   // ─── Mounting ──────────────────────────────────────────────
 
-  function findSourceContainer() {
-    // Prefer the block container (inside cart drawer section) over embed
-    const blockContainer = document.querySelector("[data-gift-drawer-widget]:not([data-gift-embed-mode])");
-    if (blockContainer) return blockContainer;
-    // Fall back to embed container (hidden, injected globally)
-    return document.querySelector("[data-gift-drawer-widget]");
-  }
-
-  function findDrawerFooter() {
-    // Dawn: cart-drawer .drawer__footer
-    // Prestige: cart-drawer [slot="footer"]
-    return document.querySelector("cart-drawer .drawer__footer") ||
-           document.querySelector('cart-drawer [slot="footer"]');
-  }
-
-  function findDrawerContent() {
-    // Dawn: cart-drawer .drawer__content / cart-drawer-items
-    // Prestige: cart-drawer .cart-drawer__items / cart-drawer content area
-    return document.querySelector("cart-drawer .drawer__content") ||
-           document.querySelector("cart-drawer .cart-drawer__items") ||
-           document.querySelector("cart-drawer-items") ||
-           document.querySelector("cart-drawer .drawer__body");
-  }
-
   function ensureMounted() {
-    // If the mount container already exists in the DOM, keep it
     if (mountContainer && document.contains(mountContainer)) return true;
 
     sourceContainer = findSourceContainer();
     if (!sourceContainer) return false;
 
-    const content = findDrawerContent();
-    const footer = findDrawerFooter();
-    if (!content && !footer) {
-      // Drawer not present on this page
-      return false;
+    const drawer = findDrawer();
+    if (!drawer) return false;
+
+    // A drawer block rendered inside the drawer is used in place.
+    if (!sourceContainer.hasAttribute("data-gift-embed-mode") && drawer.contains(sourceContainer)) {
+      mountContainer = sourceContainer;
+      mountContainer.classList.add("gift-drawer-widget");
+      mountContainer.style.display = "";
+      return true;
     }
 
-    // Create the mount container
     mountContainer = document.createElement("div");
     mountContainer.className = "gift-drawer-widget";
     mountContainer.setAttribute("data-gift-drawer-mounted", "");
-
-    // Insert as first child of the drawer content area, so the widget
-    // appears at the top of the drawer, not at the end before the footer
-    if (content) {
-      content.prepend(mountContainer);
-    } else {
-      footer.before(mountContainer);
-    }
-
-    // Copy settings from source container
     for (const attr of sourceContainer.attributes) {
-      if (attr.name.startsWith("data-")) {
+      if (attr.name.startsWith("data-") && attr.name !== "data-gift-embed-mode") {
         mountContainer.setAttribute(attr.name, attr.value);
       }
+    }
+    mountContainer.removeAttribute("data-gift-drawer-widget");
+    mountContainer.setAttribute("style", sourceContainer.getAttribute("style") || "");
+    mountContainer.style.display = "";
+
+    const content = firstMatch(drawer, CONTENT_CANDIDATES);
+    const footer = firstMatch(drawer, FOOTER_CANDIDATES);
+    const position = getSetting("drawerPosition", "top");
+
+    if (position === "bottom" && footer) {
+      footer.before(mountContainer);
+    } else if (content) {
+      content.prepend(mountContainer);
+    } else if (footer) {
+      footer.before(mountContainer);
+    } else {
+      drawer.appendChild(mountContainer);
     }
 
     return true;
   }
 
-  function setupSectionObserver() {
+  function setupDrawerObserver() {
     if (observer) observer.disconnect();
-
-    const drawer = document.querySelector("cart-drawer");
-    if (!drawer) return;
+    const drawer = findDrawer();
+    if (!drawer || typeof MutationObserver === "undefined") return;
 
     observer = new MutationObserver(() => {
-      if (renderDebounce) clearTimeout(renderDebounce);
-      renderDebounce = setTimeout(async () => {
-        renderDebounce = null;
-        // Re-mount if the container was removed by section replacement
-        if (!mountContainer || !document.contains(mountContainer)) {
-          if (ensureMounted()) {
-            await render();
-          }
-        }
-      }, 200);
+      if (mountContainer && document.contains(mountContainer)) return;
+      scheduleRender(200);
     });
     observer.observe(drawer, { childList: true, subtree: true });
   }
@@ -193,26 +221,10 @@
     return result;
   }
 
-  function renderLoading() {
-    if (!mountContainer) return;
-    mountContainer.innerHTML = `
-      <div class="gift-drawer-widget__loading">
-        <div class="gift-drawer-widget__spinner"></div>
-      </div>
-    `;
-  }
-
-  function renderEmpty() {
-    if (!mountContainer) return;
-    mountContainer.innerHTML = "";
-  }
-
-  // ─── Scale auto-scroll ──────────────────────────────────────
   function scrollScaleToCurrent(container, tiers, thresholdBase, stepWidth) {
     const scrollEl = container.querySelector("[data-gift-scale-scroll]");
     if (!scrollEl) return;
 
-    // Find the index of the current or next tier
     let currentIdx = 0;
     for (let i = 0; i < tiers.length; i++) {
       if (thresholdBase >= tiers[i].minAmount) {
@@ -222,48 +234,37 @@
       }
     }
 
-    // Center the current tier in the scroll viewport
     const targetX = currentIdx * stepWidth - scrollEl.clientWidth / 2 + stepWidth / 2;
-    scrollEl.scrollTo({
-      left: Math.max(0, targetX),
-      behavior: "smooth",
-    });
+    scrollEl.scrollTo({ left: Math.max(0, targetX), behavior: "smooth" });
   }
 
   async function render() {
     if (isRendering) return;
     if (!ensureMounted()) return;
     isRendering = true;
+    setupDrawerObserver();
 
     try {
       await G.ensureConfig();
       const cart = await G.fetchCart();
-      lastCart = cart;
 
       const state = G.computeCartState(cart);
-      const { activeTier, nextTier, thresholdBase, remainingBudget, totalGiftValue, giftSelectionCount } = state;
+      const { activeTier, thresholdBase, remainingBudget, totalGiftValue, giftSelectionCount } = state;
       const tiers = G.getTiers();
 
-      // No tiers configured → hide widget
       if (!tiers || tiers.length === 0) {
-        renderEmpty();
+        mountContainer.innerHTML = "";
         return;
       }
 
       // ── Scrollable scale: each tier is a fixed-width column ──
       const STEP_WIDTH = 88; // px per tier column
       const totalWidth = tiers.length * STEP_WIDTH;
-      // Dots are centered in columns: dot i center = i*STEP_WIDTH + STEP_WIDTH/2.
-      // The line spans from the first dot center to the last dot center, so the
-      // fill's coordinate origin matches the dots exactly (no edge offset).
       const usableStart = STEP_WIDTH / 2;
       const usableRange = totalWidth - STEP_WIDTH;
-      // Fill ends at the ACTIVE (current) tier dot — the last unlocked marker.
-      // Below the first tier, the fill is empty.
-      const activeIdx = activeTier ? tiers.indexOf(activeTier) : -1;
+      const activeIdx = activeTier ? tiers.findIndex((tier) => tier.id === activeTier.id) : -1;
       const fillPx = Math.max(0, activeIdx * STEP_WIDTH);
 
-      // Build tier columns
       const tierSteps = tiers.map((tier, i) => {
         const isUnlocked = thresholdBase >= tier.minAmount;
         const isCurrent = activeTier && activeTier.id === tier.id;
@@ -275,42 +276,26 @@
         return `
           <div class="gift-drawer-widget__scale-step ${stepClass}" data-tier-idx="${i}">
             <div class="gift-drawer-widget__scale-dot"></div>
-            <div class="gift-drawer-widget__scale-amount">${G.formatPrice(tier.minAmount)}</div>
-            <div class="gift-drawer-widget__scale-bonus">${G.formatPrice(tier.giftAmount)}</div>
+            <div class="gift-drawer-widget__scale-amount">${esc(G.formatPrice(tier.minAmount))}</div>
+            <div class="gift-drawer-widget__scale-bonus">${esc(G.formatPrice(tier.giftAmount))}</div>
           </div>
         `;
       }).join("");
 
-      // ── Build HTML ──
       let html = '<div class="gift-drawer-widget__inner">';
-      html += `<p class="gift-drawer-widget__promo-title">${t("promo_title")}</p>`;
+      html += `<p class="gift-drawer-widget__promo-title">${esc(t("promo_title"))}</p>`;
 
-      // Summary text
-      if (!activeTier) {
-        const firstTier = tiers[0];
-        const amountToFirst = Math.max(0, firstTier.minAmount - thresholdBase);
-        const unlockLabel = formatLabel(
-          getSetting("labelUnlock", "Add [amount] more to unlock bonus balance"),
-          { amount: G.formatPrice(amountToFirst) },
-        );
-        html += `
-          <div class="gift-drawer-widget__summary">
-            <p class="gift-drawer-widget__text">${unlockLabel}</p>
-          </div>
-        `;
-      } else {
-        const unlockedLabel = formatLabel(
-          getSetting("labelUnlocked", "You unlocked [budget] in bonus balance"),
-          { budget: G.formatPrice(activeTier.giftAmount) },
-        );
-        html += `
-          <div class="gift-drawer-widget__summary">
-            <p class="gift-drawer-widget__text">${unlockedLabel}</p>
-          </div>
-        `;
-      }
+      const summary = activeTier
+        ? formatLabel(getSetting("labelUnlocked", t("label_unlocked")), { budget: G.formatPrice(activeTier.giftAmount) })
+        : formatLabel(getSetting("labelUnlock", t("label_unlock")), {
+          amount: G.formatPrice(Math.max(0, tiers[0].minAmount - thresholdBase)),
+        });
+      html += `
+        <div class="gift-drawer-widget__summary">
+          <p class="gift-drawer-widget__text">${esc(summary)}</p>
+        </div>
+      `;
 
-      // Scrollable scale
       html += `
         <div class="gift-drawer-widget__scale-scroll" data-gift-scale-scroll>
           <div class="gift-drawer-widget__scale-track" style="min-width:${totalWidth}px">
@@ -324,60 +309,43 @@
         </div>
       `;
 
-      // Budget usage (only when a tier is active)
       if (activeTier) {
-        const showRemaining = getBoolSetting("showRemaining", true);
         if (totalGiftValue > 0 && remainingBudget > 0) {
-          const usedLabel = formatLabel(
-            getSetting("labelUsed", "Used [amount] · Remaining [remaining]"),
-            {
-              amount: G.formatPrice(totalGiftValue),
-              remaining: G.formatPrice(remainingBudget),
-            },
-          );
-          html += `<p class="gift-drawer-widget__budget">${usedLabel}</p>`;
+          const usedLabel = formatLabel(getSetting("labelUsed", t("label_used")), {
+            amount: G.formatPrice(totalGiftValue),
+            remaining: G.formatPrice(remainingBudget),
+          });
+          html += `<p class="gift-drawer-widget__budget">${esc(usedLabel)}</p>`;
         } else if (totalGiftValue > 0 && remainingBudget <= 0) {
-          const fullLabel = getSetting("labelFull", "Your bonus balance is fully used");
-          html += `<h2 class="gift-drawer-widget__budget--full">${fullLabel}</h2>`;
-        } else if (showRemaining) {
-          html += `<p class="gift-drawer-widget__budget">${t("remaining", { amount: G.formatPrice(remainingBudget) })}</p>`;
+          html += `<h2 class="gift-drawer-widget__budget--full">${esc(getSetting("labelFull", t("label_full")))}</h2>`;
+        } else if (getBoolSetting("showRemaining", true)) {
+          html += `<p class="gift-drawer-widget__budget">${esc(t("remaining", { amount: G.formatPrice(remainingBudget) }))}</p>`;
         }
 
-        // CTA
         let ctaLabel;
         if (remainingBudget > 0 && giftSelectionCount === 0) {
-          ctaLabel = getSetting("ctaChoose", "Choose your products");
+          ctaLabel = getSetting("ctaChoose", t("cta_choose"));
         } else if (remainingBudget > 0 && giftSelectionCount > 0) {
-          ctaLabel = getSetting("ctaMore", "Choose more products");
+          ctaLabel = getSetting("ctaMore", t("cta_more"));
         } else {
-          ctaLabel = getSetting("ctaManage", "Manage selections");
+          ctaLabel = getSetting("ctaManage", t("cta_manage"));
         }
+        html += `<a href="${esc(G.storefrontUrl("cart"))}" class="gift-drawer-widget__cta">${esc(ctaLabel)}</a>`;
 
-        html += `
-          <a href="/cart" class="gift-drawer-widget__cta">
-            ${ctaLabel}
-          </a>
-        `;
-
-        // Optional product preview
-        const previewSetting = getSetting("productPreview", "disabled");
-        const previewCount = parseInt(previewSetting, 10);
+        const previewCount = parseInt(getSetting("productPreview", "disabled"), 10);
         if (previewCount > 0 && remainingBudget > 0) {
           html += await renderProductPreview(cart, remainingBudget, previewCount);
         }
       }
 
-      html += `<p class="gift-drawer-widget__footnote">${t("footnote")}</p>`;
+      html += `<p class="gift-drawer-widget__footnote">${esc(t("footnote"))}</p>`;
       html += "</div>";
       mountContainer.innerHTML = html;
 
-      // Auto-scroll scale to current position
       scrollScaleToCurrent(mountContainer, tiers, thresholdBase, STEP_WIDTH);
     } catch (e) {
       console.error("[Gift Drawer] Render failed:", e);
-      if (mountContainer) {
-        mountContainer.innerHTML = "";
-      }
+      if (mountContainer) mountContainer.innerHTML = "";
     } finally {
       isRendering = false;
     }
@@ -392,86 +360,30 @@
 
     let products = [];
     try {
-      const allProducts = await fetchGiftProducts(remainingBudget, excludeIds);
-      products = allProducts.slice(0, maxCount);
+      products = (await G.fetchGiftProducts(remainingBudget, excludeIds, maxCount)).slice(0, maxCount);
     } catch (e) {
       console.warn("[Gift Drawer] Product preview fetch failed:", e);
       return "";
     }
-
     if (products.length === 0) return "";
 
-    const cards = products
-      .map(
-        (p) => `
-        <a href="/cart" class="gift-drawer-widget__product" data-variant-id="${p.variantId}">
-          <img src="${p.image}" alt="${p.title}" class="gift-drawer-widget__product-image" loading="lazy" />
-          <div class="gift-drawer-widget__product-info">
-            <p class="gift-drawer-widget__product-name">${p.title}</p>
-            <p class="gift-drawer-widget__product-price">${G.formatPrice(p.price)}</p>
-          </div>
-        </a>
-      `,
-      )
-      .join("");
+    const cartUrl = esc(G.storefrontUrl("cart"));
+    const cards = products.map((p) => `
+      <a href="${cartUrl}" class="gift-drawer-widget__product" data-variant-id="${esc(p.variantId)}">
+        <img src="${esc(p.image)}" alt="${esc(p.title)}" class="gift-drawer-widget__product-image" loading="lazy" />
+        <div class="gift-drawer-widget__product-info">
+          <p class="gift-drawer-widget__product-name">${esc(p.title)}</p>
+          <p class="gift-drawer-widget__product-price">${esc(G.formatPrice(p.price))}</p>
+        </div>
+      </a>
+    `).join("");
 
     return `
       <div class="gift-drawer-widget__products">
-        <p class="gift-drawer-widget__products-label">${t("available_gifts")}</p>
+        <p class="gift-drawer-widget__products-label">${esc(t("available_gifts"))}</p>
         <div class="gift-drawer-widget__products-grid">${cards}</div>
       </div>
     `;
-  }
-
-  // ─── Product fetch (shared logic) ──────────────────────────
-
-  async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set()) {
-    const appUrl = "/apps/gift-threshold";
-    try {
-      const res = await fetch(
-        `${appUrl}/products?maxPrice=${maxPrice}`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      return (data.products || []).filter(
-        (p) => !excludeVariantIds.has(String(p.variantId)),
-      );
-    } catch (e) {
-      console.warn("[Gift Drawer] API products fetch failed, falling back to /products.json:", e);
-      // Fallback to storefront endpoint (no exclusion filtering)
-      const allProducts = [];
-      let page = 1;
-      const perPage = 250;
-      while (page <= 4) {
-        const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
-          headers: { Accept: "application/json" },
-        });
-        if (!res.ok) break;
-        const data = await res.json();
-        const products = data.products || [];
-        if (products.length === 0) break;
-        allProducts.push(...products);
-        if (products.length < perPage) break;
-        page++;
-      }
-
-      const result = [];
-      for (const product of allProducts) {
-        for (const variant of product.variants || []) {
-          if (!variant.available) continue;
-          if (excludeVariantIds.has(String(variant.id))) continue;
-          if (variant.price > maxPrice) continue;
-          result.push({
-            variantId: String(variant.id),
-            title: product.title,
-            price: variant.price,
-            image: product.image?.src || "",
-          });
-        }
-      }
-      return result;
-    }
   }
 
   // ─── Cart update listener ──────────────────────────────────
@@ -485,16 +397,17 @@
   }
 
   function listenForCartUpdates() {
-    // Subscribe to gift-core cart updates
-    G.onCartUpdate(() => scheduleRender(300));
-
-    // Listen for Dawn and custom cart events
-    [
-      "cart:updated", "cart:refresh", "cart:change",
-      "cart-update", "quantity-update",
-    ].forEach((eventName) => {
-      window.addEventListener(eventName, () => scheduleRender(300));
-    });
+    if (listening) return;
+    listening = true;
+    G.onCartUpdate(() => scheduleRender(150));
+    G.onCartMutation(() => scheduleRender(300));
+    ["cart:updated", "cart:refresh", "cart:change", "cart-update", "cart-drawer:open", "cart:open"].forEach(
+      (eventName) => {
+        document.addEventListener(eventName, () => {
+          if (!G.isRefreshing()) scheduleRender(300);
+        });
+      },
+    );
   }
 
   // ─── Init ──────────────────────────────────────────────────
@@ -515,71 +428,28 @@
       return;
     }
 
-    // Wait for the drawer to be available
-    if (!ensureMounted()) {
-      // Drawer might not be in the DOM yet — retry on first cart interaction
-      // or when the drawer opens
-      let retryCount = 0;
-      const retryInit = () => {
-        if (ensureMounted()) {
-          setupSectionObserver();
-          listenForCartUpdates();
-          render();
-          window.removeEventListener("cart:updated", retryInit);
-          window.removeEventListener("cart:refresh", retryInit);
-          window.removeEventListener("cart:change", retryInit);
-          window.removeEventListener("ajaxcart:add", retryInit);
-          window.removeEventListener("cart-drawer:open", retryInit);
-          return;
-        }
-        // If still not mounted, retry with increasing delay
-        retryCount++;
-        if (retryCount < 10) {
-          setTimeout(retryInit, 200 * retryCount);
-        }
-      };
-      window.addEventListener("cart:updated", retryInit);
-      window.addEventListener("cart:refresh", retryInit);
-      window.addEventListener("cart:change", retryInit);
-      window.addEventListener("ajaxcart:add", retryInit);
-      window.addEventListener("cart-drawer:open", retryInit);
-      // Also try on DOMContentLoaded if it hasn't fired yet
-      if (document.readyState !== "loading") {
-        setTimeout(() => {
-          if (ensureMounted()) {
-            setupSectionObserver();
-            listenForCartUpdates();
-            render();
-          }
-        }, 500);
-      }
-      // Also observe the body for cart-drawer being added to the DOM
-      if (typeof MutationObserver !== "undefined") {
-        const bodyObserver = new MutationObserver(() => {
-          if (ensureMounted()) {
-            bodyObserver.disconnect();
-            setupSectionObserver();
-            listenForCartUpdates();
-            render();
-          }
-        });
-        bodyObserver.observe(document.body, { childList: true, subtree: false });
-        // Stop observing after 30 seconds to avoid leaks
-        setTimeout(() => bodyObserver.disconnect(), 30000);
-      }
+    listenForCartUpdates();
+    if (ensureMounted()) {
+      render();
       return;
     }
 
-    setupSectionObserver();
-    listenForCartUpdates();
-    render();
+    // Some themes add the drawer to the page later (on first open).
+    if (typeof MutationObserver !== "undefined") {
+      const bodyObserver = new MutationObserver(() => {
+        if (ensureMounted()) {
+          bodyObserver.disconnect();
+          render();
+        }
+      });
+      bodyObserver.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => bodyObserver.disconnect(), 30000);
+    }
   }
 
-  // Public API for re-init after section replacement
   window.giftDrawer = { render, init };
 
-  // Delegated checkout interception — registered once on document (capture phase)
-  // so it survives Prestige replacing cart-drawer innerHTML on cart updates.
+  // Delegated, capture-phase listener so it survives drawer re-renders.
   document.addEventListener("click", handleCheckoutClick, true);
 
   if (document.readyState === "loading") {

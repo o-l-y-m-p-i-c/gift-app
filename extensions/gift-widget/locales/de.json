@@ -1,0 +1,61 @@
+{
+  "gift": {
+    "title": "Gratis-Geschenk",
+    "promo_title": "Mehr ausgeben, Geschenk erhalten!",
+    "footnote": "*Das Geschenkbudget kann einmal pro Bestellung genutzt werden. Nicht genutzte Beträge werden nicht auf den nächsten Einkauf übertragen.",
+    "loading": "Wird geladen…",
+    "error_title": "Etwas ist schiefgelaufen",
+    "retry": "Erneut versuchen",
+    "select": "Auswählen",
+    "remove": "Geschenk entfernen",
+    "gift_budget": "{{ amount }} Geschenkbudget",
+    "gift_budget_max": "{{ amount }} Geschenkbudget – höchste Stufe!",
+    "to_unlock_next": "Noch {{ amount }} bis {{ budget }}",
+    "to_unlock_first": "Noch {{ amount }} bis zu deinem ersten Geschenk",
+    "unlock_more": "Lege mehr Artikel in den Warenkorb, um ein Gratis-Geschenk freizuschalten!",
+    "budget_full": "Dein Geschenkbudget von {{ amount }} ist vollständig genutzt!",
+    "unable_load": "Geschenke konnten nicht geladen werden.",
+    "no_products": "Keine Geschenke bis {{ amount }} verfügbar.",
+    "choose_up_to": "Wähle Geschenke bis {{ amount }}",
+    "remaining": "{{ amount }} übrig",
+    "budget_label": "Geschenkbudget: {{ amount }}",
+    "unlock_free": "Gratis-Geschenk freischalten",
+    "skip_step": "Überspringen und zum Warenkorb",
+    "promo_conflict": "Das Geschenk kann nicht mit dem Rabattcode {{ code }} kombiniert werden. Entferne den Code oder bitte den Shop, die Kombination mit Produktrabatten zu erlauben.",
+    "promo_choice_title": "Wähle dein Angebot",
+    "promo_choice_message": "Der Rabattcode {{ code }} ist bereits angewendet. Das Gratis-Geschenk ersetzt ihn. Welches Angebot möchtest du nutzen?",
+    "promo_keep": "{{ code }} behalten",
+    "promo_use_gift": "Gratis-Geschenk nutzen",
+    "drawer": {
+      "cta_choose": "Geschenk auswählen",
+      "cta_more": "Weitere Geschenke wählen",
+      "cta_manage": "Geschenke verwalten",
+      "label_unlock": "Noch {{ amount }} bis zu einem Gratis-Geschenk",
+      "label_unlocked": "Du hast ein Geschenkbudget von {{ budget }} freigeschaltet",
+      "label_used": "{{ amount }} genutzt · {{ remaining }} übrig",
+      "label_full": "Dein Geschenkbudget ist vollständig genutzt",
+      "available_gifts": "Verfügbare Geschenke",
+      "remaining": "{{ amount }} übrig"
+    },
+    "product": {
+      "button_label": "Als Geschenk hinzufügen",
+      "disabled_label": "Mehr kaufen für ein Geschenk",
+      "over_budget_label": "Übersteigt dein Geschenkbudget",
+      "unavailable_label": "Als Geschenk nicht verfügbar",
+      "excluded_label": "Nicht als Geschenk erhältlich",
+      "loading_label": "Wird hinzugefügt…",
+      "error_label": "Fehler – bitte erneut versuchen",
+      "added": "In den Warenkorb gelegt!",
+      "remaining_budget": "Verbleibendes Geschenkbudget: {{ amount }}",
+      "add_more": "Noch {{ amount }} bis zu einem Geschenk"
+    },
+    "notifications": {
+      "tier_unlocked": "Neue Geschenkstufe freigeschaltet! Wähle Geschenke bis {{ amount }}",
+      "removed_discount": "Deine Geschenke wurden entfernt, weil der Rabatt nicht angewendet werden konnte.",
+      "removed_no_qualify": "Dein Warenkorb qualifiziert sich nicht mehr für ein Gratis-Geschenk.",
+      "removed_choose_again": "Deine Geschenke wurden entfernt. Bitte wähle erneut.",
+      "add_failed": "Das Geschenk konnte nicht hinzugefügt werden.",
+      "remove_failed": "Das Geschenk konnte nicht entfernt werden. Bitte versuche es erneut."
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "gift": {
+    "title": "Cadeau offert",
+    "promo_title": "Dépensez plus, recevez un cadeau !",
+    "footnote": "*Le budget cadeau s'utilise une fois par commande. La partie non utilisée n'est pas reportée sur votre prochain achat.",
+    "loading": "Chargement…",
+    "error_title": "Une erreur s'est produite",
+    "retry": "Réessayer",
+    "select": "Choisir",
+    "remove": "Retirer le cadeau",
+    "gift_budget": "Budget cadeau de {{ amount }}",
+    "gift_budget_max": "Budget cadeau de {{ amount }} – palier maximum !",
+    "to_unlock_next": "Encore {{ amount }} pour débloquer {{ budget }}",
+    "to_unlock_first": "Encore {{ amount }} pour débloquer votre premier cadeau",
+    "unlock_more": "Ajoutez des articles à votre panier pour débloquer un cadeau offert !",
+    "budget_full": "Votre budget cadeau de {{ amount }} est entièrement utilisé !",
+    "unable_load": "Impossible de charger les cadeaux.",
+    "no_products": "Aucun cadeau disponible jusqu'à {{ amount }}.",
+    "choose_up_to": "Choisissez des cadeaux jusqu'à {{ amount }}",
+    "remaining": "Il reste {{ amount }}",
+    "budget_label": "Budget cadeau : {{ amount }}",
+    "unlock_free": "Débloquer un cadeau offert",
+    "skip_step": "Passer et aller au panier",
+    "promo_conflict": "Le cadeau ne peut pas être combiné avec le code {{ code }}. Retirez ce code ou demandez à la boutique d'autoriser sa combinaison avec les réductions sur produits.",
+    "promo_choice_title": "Choisissez votre offre",
+    "promo_choice_message": "Le code {{ code }} est déjà appliqué. Utiliser le cadeau offert le remplacera. Quelle offre souhaitez-vous ?",
+    "promo_keep": "Garder {{ code }}",
+    "promo_use_gift": "Utiliser le cadeau",
+    "drawer": {
+      "cta_choose": "Choisir mon cadeau",
+      "cta_more": "Choisir d'autres cadeaux",
+      "cta_manage": "Gérer mes cadeaux",
+      "label_unlock": "Encore {{ amount }} pour débloquer un cadeau offert",
+      "label_unlocked": "Vous avez débloqué un budget cadeau de {{ budget }}",
+      "label_used": "{{ amount }} utilisés · il reste {{ remaining }}",
+      "label_full": "Votre budget cadeau est entièrement utilisé",
+      "available_gifts": "Cadeaux disponibles",
+      "remaining": "Il reste {{ amount }}"
+    },
+    "product": {
+      "button_label": "Ajouter en cadeau",
+      "disabled_label": "Ajoutez plus pour un cadeau",
+      "over_budget_label": "Dépasse votre budget cadeau restant",
+      "unavailable_label": "Indisponible en cadeau",
+      "excluded_label": "Non disponible en cadeau",
+      "loading_label": "Ajout…",
+      "error_label": "Échec — réessayez",
+      "added": "Ajouté au panier !",
+      "remaining_budget": "Budget cadeau restant : {{ amount }}",
+      "add_more": "Encore {{ amount }} pour débloquer un cadeau"
+    },
+    "notifications": {
+      "tier_unlocked": "Nouveau palier débloqué ! Choisissez des cadeaux jusqu'à {{ amount }}",
+      "removed_discount": "Vos cadeaux ont été retirés car la réduction n'a pas pu être appliquée.",
+      "removed_no_qualify": "Votre panier ne donne plus droit à un cadeau offert.",
+      "removed_choose_again": "Vos cadeaux ont été retirés. Veuillez choisir à nouveau.",
+      "add_failed": "Impossible d'ajouter ce cadeau.",
+      "remove_failed": "Impossible de retirer le cadeau. Veuillez réessayer."
+    }
+  }
+}

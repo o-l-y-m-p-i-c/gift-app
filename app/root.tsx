@@ -42,6 +42,7 @@ export default function App() {
         <Link to="/app/tiers">Gift Tiers</Link>
         <Link to="/app/settings">Settings</Link>
         <Link to="/app/history">History</Link>
+        <Link to="/app/billing">Billing</Link>
       </NavMenu>
       <Outlet />
     </ShopifyAppProvider>

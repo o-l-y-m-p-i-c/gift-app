@@ -1,0 +1,13 @@
+{%- comment -%}
+  Shared attributes for every Gift app block: shop details used for money
+  formatting, the cart refresh settings and the style variables.
+  Usage: <div {% render 'gift-app-config', block: block, extra_style: '' %}>
+{%- endcomment -%}
+data-gift-app
+data-shop="{{ shop.permanent_domain }}"
+data-shop-currency="{{ shop.currency }}"
+data-money-format="{{ shop.money_format | escape }}"
+data-proxy-path="{{ block.settings.proxy_path | default: '/apps/gift-threshold' | escape }}"
+data-refresh-mode="{{ block.settings.refresh_mode | default: 'auto' }}"
+data-refresh-sections="{{ block.settings.refresh_sections | escape }}"
+style="--gift-accent: {{ block.settings.accent_color | default: '#1c1c1c' }}; --gift-accent-text: {{ block.settings.accent_text_color | default: '#ffffff' }}; --gift-corner-radius: {{ block.settings.corner_radius | default: 12 }}px; {{ extra_style }}"

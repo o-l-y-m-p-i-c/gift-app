@@ -1,8 +1,5 @@
 import { prisma } from "~/db.server";
-import { DAVINES_TIERS, calculateGiftAmount, findActiveTier } from "~/lib/tiers";
-
-// Re-export for convenience
-export { DAVINES_TIERS, calculateGiftAmount, findActiveTier };
+import { SAMPLE_TIERS, calculateGiftAmount } from "~/lib/tiers";
 
 // ─── Gift Tier CRUD ───────────────────────────────────────────
 
@@ -46,29 +43,29 @@ export async function updateTier(
   return prisma.giftTier.update({ where: { id }, data });
 }
 
-export async function deleteTier(id: number) {
-  return prisma.giftTier.delete({ where: { id } });
+export async function deleteTier(id: number, shopId: string) {
+  return prisma.giftTier.deleteMany({ where: { id, shopId } });
 }
 
-// ─── Bulk import from CSV data ────────────────────────────────
+// ─── Sample preset ────────────────────────────────────────────
 
 /**
- * Bulk import Davines tiers for a shop.
- * Clears existing tiers and inserts the 57 Davines tiers.
+ * Replace a shop's tiers with the sample preset.
  */
-export async function importDavinesTiers(shopId: string): Promise<number> {
-  await prisma.giftTier.deleteMany({ where: { shopId } });
+export async function importSampleTiers(shopId: string): Promise<number> {
+  await prisma.$transaction([
+    prisma.giftTier.deleteMany({ where: { shopId } }),
+    prisma.giftTier.createMany({
+      data: SAMPLE_TIERS.map((t) => ({
+        shopId,
+        minAmount: t.minAmount,
+        giftPercent: t.giftPercent,
+        giftAmount: calculateGiftAmount(t.minAmount, t.giftPercent),
+        collectionId: null,
+        active: true,
+      })),
+    }),
+  ]);
 
-  await prisma.giftTier.createMany({
-    data: DAVINES_TIERS.map((t) => ({
-      shopId,
-      minAmount: t.minAmount,
-      giftPercent: t.giftPercent,
-      giftAmount: t.giftAmount,
-      collectionId: null,
-      active: true,
-    })),
-  });
-
-  return DAVINES_TIERS.length;
+  return SAMPLE_TIERS.length;
 }

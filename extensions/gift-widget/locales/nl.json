@@ -1,0 +1,61 @@
+{
+  "gift": {
+    "title": "Gratis cadeau",
+    "promo_title": "Meer besteden, gratis cadeau!",
+    "footnote": "*Het cadeaubudget kun je één keer per bestelling gebruiken. Een ongebruikt deel wordt niet meegenomen naar je volgende aankoop.",
+    "loading": "Laden…",
+    "error_title": "Er ging iets mis",
+    "retry": "Opnieuw proberen",
+    "select": "Kiezen",
+    "remove": "Cadeau verwijderen",
+    "gift_budget": "{{ amount }} cadeaubudget",
+    "gift_budget_max": "{{ amount }} cadeaubudget – hoogste niveau!",
+    "to_unlock_next": "Nog {{ amount }} tot {{ budget }}",
+    "to_unlock_first": "Nog {{ amount }} tot je eerste cadeau",
+    "unlock_more": "Voeg meer artikelen toe om een gratis cadeau te ontgrendelen!",
+    "budget_full": "Je cadeaubudget van {{ amount }} is volledig gebruikt!",
+    "unable_load": "Cadeaus konden niet worden geladen.",
+    "no_products": "Geen cadeaus beschikbaar tot {{ amount }}.",
+    "choose_up_to": "Kies cadeaus tot {{ amount }}",
+    "remaining": "Nog {{ amount }}",
+    "budget_label": "Cadeaubudget: {{ amount }}",
+    "unlock_free": "Ontgrendel een gratis cadeau",
+    "skip_step": "Overslaan en naar winkelwagen",
+    "promo_conflict": "Het cadeau kan niet worden gecombineerd met kortingscode {{ code }}. Verwijder de code of vraag de winkel om combinatie met productkortingen toe te staan.",
+    "promo_choice_title": "Kies je aanbieding",
+    "promo_choice_message": "Kortingscode {{ code }} is al toegepast. Het gratis cadeau vervangt deze. Welke aanbieding wil je gebruiken?",
+    "promo_keep": "{{ code }} behouden",
+    "promo_use_gift": "Gratis cadeau gebruiken",
+    "drawer": {
+      "cta_choose": "Kies je cadeau",
+      "cta_more": "Kies meer cadeaus",
+      "cta_manage": "Cadeaus beheren",
+      "label_unlock": "Nog {{ amount }} tot een gratis cadeau",
+      "label_unlocked": "Je hebt een cadeaubudget van {{ budget }} ontgrendeld",
+      "label_used": "{{ amount }} gebruikt · nog {{ remaining }}",
+      "label_full": "Je cadeaubudget is volledig gebruikt",
+      "available_gifts": "Beschikbare cadeaus",
+      "remaining": "Nog {{ amount }}"
+    },
+    "product": {
+      "button_label": "Als cadeau toevoegen",
+      "disabled_label": "Voeg meer toe voor een cadeau",
+      "over_budget_label": "Hoger dan je resterende cadeaubudget",
+      "unavailable_label": "Niet beschikbaar als cadeau",
+      "excluded_label": "Niet beschikbaar als cadeau",
+      "loading_label": "Toevoegen…",
+      "error_label": "Mislukt — probeer opnieuw",
+      "added": "Toegevoegd aan winkelwagen!",
+      "remaining_budget": "Resterend cadeaubudget: {{ amount }}",
+      "add_more": "Nog {{ amount }} tot een cadeau"
+    },
+    "notifications": {
+      "tier_unlocked": "Nieuw cadeauniveau ontgrendeld! Kies cadeaus tot {{ amount }}",
+      "removed_discount": "Je cadeaus zijn verwijderd omdat de korting niet kon worden toegepast.",
+      "removed_no_qualify": "Je winkelwagen komt niet meer in aanmerking voor een gratis cadeau.",
+      "removed_choose_again": "Je cadeaus zijn verwijderd. Kies opnieuw.",
+      "add_failed": "Dit cadeau kon niet worden toegevoegd.",
+      "remove_failed": "Het cadeau kon niet worden verwijderd. Probeer het opnieuw."
+    }
+  }
+}

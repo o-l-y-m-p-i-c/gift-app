@@ -2,22 +2,21 @@
  * Gift Widget — Cart page logic.
  *
  * Uses the shared gift-core.js runtime (window.giftApp) for:
- *   - cart fetching
+ *   - cart fetching and theme cart refreshes
  *   - tier/budget calculations
  *   - gift add/remove workflow
  *   - BXGY discount code generation and application
  *
- * This file retains only:
- *   - Cart-page rendering (progress bar, selected gifts, product carousel)
- *   - Cart section refresh (Dawn cart page + drawer)
- *   - Cart abuse prevention (quantity increase interception)
+ * This file handles:
+ *   - Cart-page rendering (progress scale, selected gifts, product carousel)
+ *   - The optional "choose a gift first" step that hides the main cart
+ *   - Re-rendering after cart changes made by the theme
  */
 
 (function () {
-  // Support multiple containers: cart page + cart drawer can both have
-  // a gift-widget-container. We initialize once and render to all of them.
+  // Several widget blocks can be on one page (cart page + cart drawer).
   function getContainers() {
-    return document.querySelectorAll("#gift-widget-container");
+    return document.querySelectorAll("[data-gift-widget]");
   }
 
   function hideContainers() {
@@ -55,113 +54,57 @@
   }
 
   const GIFT_PROPERTY_KEY = G.GIFT_PROPERTY_KEY;
-  const GIFT_SELECTION_PROPERTY_KEY = G.GIFT_SELECTION_PROPERTY_KEY;
+  const esc = G.escapeHtml;
 
   let lastActiveTierId = null;
-  let giftProducts = [];
   let cartUpdateDebounce = null;
-  let isRefreshingSection = false;
   let isSelectingGift = false;
   let removingGiftKey = null;
-  let productsLoading = false;
   let widgetBusyDepth = 0;
   let pendingEventCart = null;
+  let handlingUpdate = false;
+  let queuedCart = null;
 
-  // ─── sessionStorage caching for gift products ─────────────
-  const PRODUCTS_CACHE_PREFIX = "giftProducts_";
-  const PRODUCTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  // ─── Optional "choose a gift first" step ──────────────────
+  // When enabled in the block settings, the main cart is hidden until the
+  // customer picks a gift or skips the step.
 
-  function getCachedProducts(maxPrice) {
-    try {
-      const key = PRODUCTS_CACHE_PREFIX + maxPrice;
-      const raw = sessionStorage.getItem(key);
-      if (!raw) return null;
-      const entry = JSON.parse(raw);
-      if (Date.now() - entry.timestamp > PRODUCTS_CACHE_TTL) {
-        sessionStorage.removeItem(key);
-        return null;
-      }
-      return entry.products;
-    } catch {
-      return null;
-    }
+  function hideCartUntilChosen() {
+    return [...getContainers()].some((el) => el.dataset.hideCartUntilChosen === "true");
   }
-
-  function setCachedProducts(maxPrice, products) {
-    // Don't cache empty arrays — allows re-fetching if API had a temporary issue
-    if (!products || products.length === 0) return;
-    try {
-      const key = PRODUCTS_CACHE_PREFIX + maxPrice;
-      sessionStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), products }));
-    } catch {
-      // sessionStorage might be full or unavailable
-    }
-  }
-
-  // ─── Step-by-step cart logic ──────────────────────────────
-  // Step 1: Bonus balance available + no gift selected → show ONLY gift widget
-  // Step 2: Gift already selected OR no bonus → show main cart content
 
   function getMainCartSections() {
-    // Prestige: section.shopify-section--main-cart
-    // Dawn: section[id*="main-cart"], section[id*="cart-items"]
-    const sections = document.querySelectorAll(
-      'section.shopify-section--main-cart, ' +
-      'section[id*="shopify-section"][id*="main-cart"], ' +
-      'section[id*="shopify-section"][id*="cart-items"]:not([id*="apps"])'
-    );
-    // Filter out the apps section (which contains the gift widget)
-    return [...sections].filter(
-      (s) => !s.classList.contains("shopify-section--apps") &&
-             !s.id.includes("__1789037310479ced67") &&
-             !s.querySelector("#gift-widget-container")
-    );
+    const customSelector = [...getContainers()].map((el) => el.dataset.mainCartSelector).find(Boolean);
+    const candidates = customSelector
+      ? [...document.querySelectorAll(customSelector)]
+      : [...document.querySelectorAll('[id^="shopify-section-"]')].filter((section) =>
+          section.querySelector('form[action$="/cart"], cart-items, [data-cart-items]'),
+        );
+    return candidates.filter((section) => !section.querySelector("[data-gift-widget]"));
   }
 
-  function hasExternalDiscount(cart) {
-    return (cart?.discount_codes || []).some(
-      (discount) => discount.applicable !== false &&
-        discount.code &&
-        !discount.code.startsWith("BONUS-") &&
-        !discount.code.startsWith("GIFT-"),
-    );
+  function isStepOne(state) {
+    return hideCartUntilChosen() &&
+      Boolean(state.activeTier) &&
+      state.remainingBudget > 0 &&
+      state.giftSelectionCount === 0 &&
+      G.getExternalDiscountCodes(state.cart).length === 0;
   }
 
   function toggleCartStep(state) {
-    const mainCartSections = getMainCartSections();
-    const showStep1 =
-      state.activeTier &&
-      state.remainingBudget > 0 &&
-      state.giftSelectionCount === 0 &&
-      !hasExternalDiscount(state.cart);
-
-    mainCartSections.forEach((section) => {
-      if (showStep1) {
-        section.style.display = "none";
-      } else {
-        section.style.display = "";
-      }
+    const showStep1 = isStepOne(state);
+    getMainCartSections().forEach((section) => {
+      section.style.display = showStep1 ? "none" : "";
     });
-
-    // Add/remove a class on the gift widget container for step-1 styling
-    const containers = getContainers();
-    containers.forEach((container) => {
-      if (showStep1) {
-        container.classList.add("gift-widget-container--step1");
-      } else {
-        container.classList.remove("gift-widget-container--step1");
-      }
+    getContainers().forEach((container) => {
+      container.classList.toggle("gift-widget-container--step1", showStep1);
     });
   }
 
-  // Instantly transition to step 2 without waiting for cart refresh.
-  // Used by selectGift/removeGift to avoid a jarring flash during the
-  // async section refresh.
+  // Instantly show the cart again when a gift is chosen.
   function forceStep2() {
-    const mainCartSections = getMainCartSections();
-    mainCartSections.forEach((section) => { section.style.display = ""; });
-    const containers = getContainers();
-    containers.forEach((container) => {
+    getMainCartSections().forEach((section) => { section.style.display = ""; });
+    getContainers().forEach((container) => {
       container.classList.remove("gift-widget-container--step1");
     });
   }
@@ -217,16 +160,18 @@
 
   // ─── Init ──────────────────────────────────────────────────
 
-  async function init() {
+  let initPromise = null;
+
+  function init() {
+    if (!initPromise) {
+      initPromise = initOnce().finally(() => { initPromise = null; });
+    }
+    return initPromise;
+  }
+
+  async function initOnce() {
     const containers = getContainers();
     if (containers.length === 0) return;
-
-    // Only show loading skeleton on initial page load (empty container),
-    // not during refreshes — avoids flashing skeleton on step transitions
-    const isInitialLoad = containers[0].children.length === 0;
-    if (isInitialLoad) {
-      containers.forEach((el) => renderLoading(el));
-    }
 
     try {
       await G.ensureConfig();
@@ -234,7 +179,7 @@
       console.error("[Gift Widget] Failed to fetch config:", e);
       showContainers();
       containers.forEach((el) =>
-        renderError(el, "Gift configuration is temporarily unavailable.", () => init()),
+        renderError(el, t("unable_load"), () => init()),
       );
       return;
     }
@@ -252,7 +197,7 @@
     } catch (e) {
       console.error("[Gift Widget] Failed to fetch cart:", e);
       containers.forEach((el) =>
-        renderError(el, "Unable to load your cart. Please refresh the page.", () => init()),
+        renderError(el, t("unable_load"), () => init()),
       );
       return;
     }
@@ -260,229 +205,85 @@
     await onCartUpdate(cart);
   }
 
-  // ─── Cart section refresh ──────────────────────────────────
-
-  async function refreshCartSection() {
-    isRefreshingSection = true;
-    const cart = await G.fetchCart().catch(() => null);
-
-    try {
-      document.dispatchEvent(new CustomEvent("cart:refresh", { detail: { cart } }));
-      document.dispatchEvent(new CustomEvent("cart:updated", { detail: { cart } }));
-    } catch (e) {
-      console.warn("[Gift Widget] Event dispatch failed:", e);
-    }
-
-    // ─── Dawn cart page ───
-    const dawnCartItems = document.querySelector("[data-id^='template--'][data-id*='cart-items']");
-    const dawnSectionId = dawnCartItems?.getAttribute("data-id");
-    if (dawnSectionId) {
-      try {
-        const res = await fetch(`${window.location.pathname}?section_id=${dawnSectionId}`, {
-          headers: { Accept: "text/html" },
-        });
-        if (res.ok) {
-          const html = await res.text();
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          const newItems = doc.querySelector(`[data-id="${dawnSectionId}"]`);
-          const oldItems = document.querySelector(`[data-id="${dawnSectionId}"]`);
-          if (newItems && oldItems) {
-            oldItems.innerHTML = newItems.innerHTML;
-            oldItems.querySelectorAll("script").forEach((oldScript) => {
-              const newScript = document.createElement("script");
-              for (const attr of oldScript.attributes || []) {
-                newScript.setAttribute(attr.name, attr.value);
-              }
-              newScript.textContent = oldScript.textContent;
-              oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-          }
-        }
-      } catch (e) {
-        console.warn("[Gift Widget] Dawn section fetch failed:", e);
-      }
-    }
-
-    // ─── Prestige cart page ───
-    const prestigeCartForm = document.querySelector("form.cart-page");
-    if (prestigeCartForm) {
-      try {
-        const res = await fetch(`${window.location.pathname}?section_id=main-cart`, {
-          headers: { Accept: "text/html" },
-        });
-        if (res.ok) {
-          const html = await res.text();
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          const newForm = doc.querySelector("form.cart-page");
-          if (newForm && prestigeCartForm) {
-            prestigeCartForm.innerHTML = newForm.innerHTML;
-            // Re-attach any scripts
-            prestigeCartForm.querySelectorAll("script").forEach((oldScript) => {
-              const newScript = document.createElement("script");
-              for (const attr of oldScript.attributes || []) {
-                newScript.setAttribute(attr.name, attr.value);
-              }
-              newScript.textContent = oldScript.textContent;
-              oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-          }
-        }
-      } catch (e) {
-        console.warn("[Gift Widget] Prestige cart section fetch failed:", e);
-      }
-    }
-
-    // ─── Dawn cart drawer ───
-    const dawnDrawer = document.querySelector("cart-drawer-items");
-    if (dawnDrawer) {
-      try {
-        const res = await fetch(`/cart?section_id=cart-drawer`, { headers: { Accept: "text/html" } });
-        if (res.ok) {
-          const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-          const newDrawer = doc.querySelector("cart-drawer-items");
-          if (newDrawer) dawnDrawer.innerHTML = newDrawer.innerHTML;
-        }
-      } catch (e) {
-        console.warn("[Gift Widget] Dawn cart drawer refresh failed:", e);
-      }
-    }
-
-    // ─── Prestige cart drawer ───
-    const prestigeDrawer = document.querySelector("cart-drawer");
-    if (prestigeDrawer) {
-      try {
-        const res = await fetch(`/cart?section_id=cart-drawer`, { headers: { Accept: "text/html" } });
-        if (res.ok) {
-          const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-          const newDrawer = doc.querySelector("cart-drawer");
-          if (newDrawer && prestigeDrawer) {
-            // Preserve our gift widget if it's already mounted inside the drawer
-            const giftWidget = prestigeDrawer.querySelector("[data-gift-drawer-mounted]");
-            prestigeDrawer.innerHTML = newDrawer.innerHTML;
-            // Re-mount gift widget if it existed
-            if (giftWidget) {
-              const newItemsContainer = prestigeDrawer.querySelector(".cart-drawer__items");
-              const newFooter = prestigeDrawer.querySelector('[slot="footer"]');
-              if (newFooter && giftWidget.parentNode === newFooter.parentNode) {
-                newFooter.before(giftWidget);
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[Gift Widget] Prestige cart drawer refresh failed:", e);
-      }
-    }
-
-    if (cart) updateCartCountBubble(cart);
-
-    if (window.giftWidget && typeof window.giftWidget._init === "function") {
-      await window.giftWidget._init();
-    }
-
-    isRefreshingSection = false;
-  }
-
-  function updateCartCountBubble(cart) {
-    const bubble = document.querySelector("#cart-icon-bubble .cart-count-bubble");
-    if (!bubble) return;
-    const count = cart.item_count || 0;
-    if (count > 0) {
-      bubble.style.display = "";
-      const countSpan = bubble.querySelector("span:not(.visually-hidden)");
-      const labelSpan = bubble.querySelector(".visually-hidden:last-child");
-      if (countSpan) countSpan.textContent = count;
-      if (labelSpan) labelSpan.textContent = `${count} ${count === 1 ? "item" : "items"}`;
-    } else {
-      bubble.style.display = "none";
-    }
-  }
-
   // ─── Cart update handler ───────────────────────────────────
 
   async function onCartUpdate(cart) {
-    setWidgetBusy(true);
-    try {
-    if (!cart || typeof cart.total_price !== "number") {
-      cart = await G.fetchCart();
-    }
-
-    const state = G.computeCartState(cart);
-    const { activeTier, nextTier, thresholdBase, remainingBudget } = state;
-    const settings = G.getSettings();
-
-    if (state.giftSelectionCount > 0 && state.freeGiftQuantity !== state.giftSelectionCount) {
-      const conflictingCodes = (cart.discount_codes || [])
-        .filter((d) => d.applicable !== false && d.code && !d.code.startsWith("BONUS-") && !d.code.startsWith("GIFT-"))
-        .map((d) => d.code);
-      await removeAllGifts(cart);
-      toggleCartStep(G.computeCartState(await G.fetchCart()));
-      await refreshCartSection();
-      if (conflictingCodes.length > 0) {
-        const message = t("promo_conflict", { code: conflictingCodes.join(", ") });
-        showWidgetError(message);
-        showNotification(message, "warning");
-      } else if (settings.showRemovalNotification) {
-        showNotification(t("notif_removed_discount"), "warning");
-      }
+    // Removing gifts below refreshes the cart, which notifies us again —
+    // queue that update instead of re-entering.
+    if (handlingUpdate) {
+      queuedCart = cart || queuedCart;
       return;
     }
-
-    const tierChanged = activeTier?.id !== lastActiveTierId;
-    if (tierChanged) {
-      if (lastActiveTierId !== null && activeTier && settings.showLevelUpNotification) {
-        showNotification(
-          t("notif_tier_unlocked", { amount: G.formatPrice(activeTier.giftAmount) }),
-          "success",
-        );
+    handlingUpdate = true;
+    setWidgetBusy(true);
+    try {
+      if (!cart || typeof cart.total_price !== "number") {
+        cart = await G.fetchCart();
       }
-      lastActiveTierId = activeTier?.id ?? null;
-    }
 
-    // If no active tier but gifts in cart → remove them
-    if (!activeTier && state.giftSelectionCount > 0) {
-      await removeAllGifts(cart);
-      await refreshCartSection();
-      if (settings.showRemovalNotification) {
-        showNotification(t("notif_removed_no_qualify"), "warning");
+      const state = G.computeCartState(cart);
+      const { activeTier } = state;
+      const settings = G.getSettings();
+
+      if (state.giftSelectionCount > 0 && state.freeGiftQuantity !== state.giftSelectionCount) {
+        const conflictingCodes = G.getExternalDiscountCodes(cart);
+        cart = await G.removeAllGifts(cart);
+        await G.refreshCart(cart);
+        if (conflictingCodes.length > 0) {
+          const message = t("promo_conflict", { code: conflictingCodes.join(", ") });
+          showWidgetError(message);
+          showNotification(message, "warning");
+        } else if (settings.showRemovalNotification) {
+          showNotification(t("notif_removed_discount"), "warning");
+        }
       }
-      cart = await G.fetchCart();
-    }
 
-    // If gifts exceed budget (tier changed down) → remove excess
-    if (activeTier && state.totalGiftValue > activeTier.giftAmount) {
-      await removeAllGifts(cart);
-      await refreshCartSection();
-      if (settings.showRemovalNotification) {
-        showNotification(t("notif_removed_choose_again"), "info");
+      const tierChanged = activeTier?.id !== lastActiveTierId;
+      if (tierChanged) {
+        if (lastActiveTierId !== null && activeTier && settings.showLevelUpNotification) {
+          showNotification(
+            t("notif_tier_unlocked", { amount: G.formatPrice(activeTier.giftAmount) }),
+            "success",
+          );
+        }
+        lastActiveTierId = activeTier?.id ?? null;
       }
-      cart = await G.fetchCart();
-    }
 
-    // Recompute state after potential gift removals
-    const updatedState = G.computeCartState(cart);
-    toggleCartStep(updatedState);
+      // If no active tier but gifts in cart → remove them
+      if (!activeTier && state.giftSelectionCount > 0) {
+        cart = await G.removeAllGifts(cart);
+        await G.refreshCart(cart);
+        if (settings.showRemovalNotification) {
+          showNotification(t("notif_removed_no_qualify"), "warning");
+        }
+      }
 
-    await renderWidget(cart, updatedState.activeTier, updatedState.nextTier, updatedState.thresholdBase);
+      // If gifts exceed budget (tier changed down) → remove them
+      if (activeTier && state.totalGiftValue > activeTier.giftAmount) {
+        cart = await G.removeAllGifts(cart);
+        await G.refreshCart(cart);
+        if (settings.showRemovalNotification) {
+          showNotification(t("notif_removed_choose_again"), "info");
+        }
+      }
+
+      // Recompute state after potential gift removals
+      const updatedState = G.computeCartState(cart);
+      toggleCartStep(updatedState);
+
+      await renderWidget(cart, updatedState);
     } finally {
       setWidgetBusy(false);
+      handlingUpdate = false;
+      if (queuedCart) {
+        const next = queuedCart;
+        queuedCart = null;
+        scheduleCartRefresh(next);
+      }
     }
   }
 
   // ─── Rendering ─────────────────────────────────────────────
-
-  function renderLoading(el) {
-    el.innerHTML = `
-      <div class="gift-widget gift-widget--loading">
-        <div class="gift-widget__skeleton-line gift-widget__skeleton-line--title"></div>
-        <div class="gift-widget__skeleton-line gift-widget__skeleton-line--subtitle"></div>
-        <div class="gift-widget__loading-scale">
-          <div class="gift-widget__skeleton-line gift-widget__skeleton-line--scale"></div>
-        </div>
-        <div class="gift-widget__skeleton-line gift-widget__skeleton-line--text"></div>
-      </div>
-    `;
-  }
 
   function setWidgetBusy(busy) {
     widgetBusyDepth = Math.max(0, widgetBusyDepth + (busy ? 1 : -1));
@@ -509,36 +310,32 @@
   function renderError(el, message, retryFn) {
     el.innerHTML = `
       <div class="gift-widget gift-widget--error">
-        <p class="gift-widget__subtitle">${t("error_title")}</p>
-        <p class="gift-widget__subtitle">${message}</p>
-        <button type="button" class="gift-widget__retry" id="gift-widget-retry">${t("retry")}</button>
+        <p class="gift-widget__subtitle">${esc(t("error_title"))}</p>
+        <p class="gift-widget__subtitle">${esc(message)}</p>
+        <button type="button" class="gift-widget__retry">${esc(t("retry"))}</button>
       </div>
     `;
-    const retryBtn = el.querySelector("#gift-widget-retry");
+    el.dataset.giftRendered = "true";
+    const retryBtn = el.querySelector(".gift-widget__retry");
     if (retryBtn && retryFn) retryBtn.addEventListener("click", retryFn);
   }
 
-  async function renderWidget(cart, activeTier, nextTier, thresholdBase) {
-    const containers = getContainers();
-    if (containers.length === 0) return;
+  function setAllContainersHtml(html) {
+    getContainers().forEach((el) => {
+      el.innerHTML = html;
+      el.dataset.giftRendered = "true";
+    });
+  }
 
-    const giftItems = G.getGiftSelections(cart);
-    const totalGiftValue = G.getTotalGiftValue(cart);
-    const remainingBudget = activeTier ? Math.max(0, activeTier.giftAmount - totalGiftValue) : 0;
-
-    // ── Scrollable scale: each tier is a fixed-width column ──
-    const allTiers = G.getTiers();
-    const STEP_WIDTH = 96; // px per tier column
-    const totalWidth = allTiers.length * STEP_WIDTH;
-    // Dots are centered in columns: dot i center = i*STEP_WIDTH + STEP_WIDTH/2.
-    // The line spans from the first dot center to the last dot center, so the
-    // fill's coordinate origin matches the dots exactly (no edge offset).
-    const usableStart = STEP_WIDTH / 2;
-    const usableRange = totalWidth - STEP_WIDTH;
+  function renderScale(allTiers, activeTier, thresholdBase, stepWidth) {
+    const totalWidth = allTiers.length * stepWidth;
+    // Dots are centered in columns: dot i center = i*stepWidth + stepWidth/2.
+    // The line spans from the first dot center to the last dot center.
+    const usableStart = stepWidth / 2;
+    const usableRange = totalWidth - stepWidth;
     // Fill ends at the ACTIVE (current) tier dot — the last unlocked marker.
-    // Below the first tier, the fill is empty.
-    const activeIdx = activeTier ? allTiers.indexOf(activeTier) : -1;
-    const fillPx = Math.max(0, activeIdx * STEP_WIDTH);
+    const activeIdx = activeTier ? allTiers.findIndex((tier) => tier.id === activeTier.id) : -1;
+    const fillPx = Math.max(0, activeIdx * stepWidth);
 
     const tierSteps = allTiers.map((tier, i) => {
       const isUnlocked = thresholdBase >= tier.minAmount;
@@ -551,75 +348,86 @@
       return `
         <div class="gift-widget__scale-step ${stepClass}" data-tier-idx="${i}">
           <div class="gift-widget__scale-dot"></div>
-          <div class="gift-widget__scale-amount">${G.formatPrice(tier.minAmount)}</div>
-          <div class="gift-widget__scale-bonus">${G.formatPrice(tier.giftAmount)}</div>
+          <div class="gift-widget__scale-amount">${esc(G.formatPrice(tier.minAmount))}</div>
+          <div class="gift-widget__scale-bonus">${esc(G.formatPrice(tier.giftAmount))}</div>
         </div>
       `;
     }).join("");
 
-    let progressHtml = "";
-
-    if (allTiers.length > 0) {
-      let infoText = "";
-      if (activeTier && nextTier) {
-        const amountToNext = nextTier.minAmount - thresholdBase;
-        infoText = `
-          <span class="gift-widget__progress-current">
-            ${t("gift_budget", { amount: G.formatPrice(activeTier.giftAmount) })}
-          </span>
-          <span class="gift-widget__progress-next">
-            ${t("to_unlock_next", { amount: G.formatPrice(amountToNext), budget: G.formatPrice(nextTier.giftAmount) })}
-          </span>
-        `;
-      } else if (activeTier && !nextTier) {
-        infoText = `
-          <span class="gift-widget__progress-current">
-            ${t("gift_budget_max", { amount: G.formatPrice(activeTier.giftAmount) })}
-          </span>
-        `;
-      } else if (!activeTier) {
-        const amountToFirst = allTiers[0].minAmount - thresholdBase;
-        infoText = `
-          <span class="gift-widget__progress-current">
-            ${t("to_unlock_first", { amount: G.formatPrice(amountToFirst) })}
-          </span>
-        `;
-      }
-
-      progressHtml = `
-        <div class="gift-widget__progress">
-          <div class="gift-widget__progress-info">
-            ${infoText}
-          </div>
-          <div class="gift-widget__scale-scroll" data-gift-scale-scroll>
-            <div class="gift-widget__scale-track" style="min-width:${totalWidth}px">
-              <div class="gift-widget__scale-steps">
-                <div class="gift-widget__scale-line" style="left:${usableStart}px;width:${usableRange}px">
-                  <div class="gift-widget__scale-line-fill" style="width:${fillPx}px"></div>
-                </div>
-                ${tierSteps}
-              </div>
+    return `
+      <div class="gift-widget__scale-scroll" data-gift-scale-scroll>
+        <div class="gift-widget__scale-track" style="min-width:${totalWidth}px">
+          <div class="gift-widget__scale-steps">
+            <div class="gift-widget__scale-line" style="left:${usableStart}px;width:${usableRange}px">
+              <div class="gift-widget__scale-line-fill" style="width:${fillPx}px"></div>
             </div>
+            ${tierSteps}
           </div>
         </div>
-      `;
+      </div>
+    `;
+  }
+
+  async function renderWidget(cart, state) {
+    const containers = getContainers();
+    if (containers.length === 0) return;
+
+    const { activeTier, nextTier, thresholdBase } = state;
+    const giftItems = G.getGiftSelections(cart);
+    const remainingBudget = state.remainingBudget;
+    const allTiers = G.getTiers();
+    const STEP_WIDTH = 96; // px per tier column
+
+    if (allTiers.length === 0) {
+      setAllContainersHtml("");
+      return;
     }
 
-    // ── Selected gifts section ──
-    let selectedHtml = "";
-    if (giftItems.length > 0) {
-      const giftCards = giftItems
-        .map(
-          (item) => `
-          <div class="gift-widget__selected-item" data-gift-key="${item.key}">
-            <img src="${item.image || ""}" alt="${item.product_title}" class="gift-widget__selected-image" loading="lazy" />
+    // No tier unlocked yet: compact variant
+    if (!activeTier) {
+      const amountToFirst = Math.max(0, allTiers[0].minAmount - thresholdBase);
+      setAllContainersHtml(`
+        <div class="gift-widget gift-widget--compact">
+          <p class="gift-widget__promo-title">${esc(t("promo_title"))}</p>
+          <p class="gift-widget__subtitle">${esc(t("to_unlock_first", { amount: G.formatPrice(amountToFirst) }))}</p>
+          <p class="gift-widget__footnote">${esc(t("footnote"))}</p>
+        </div>
+      `);
+      return;
+    }
+
+    // ── Progress ──
+    const infoText = nextTier
+      ? `
+        <span class="gift-widget__progress-current">${esc(t("gift_budget", { amount: G.formatPrice(activeTier.giftAmount) }))}</span>
+        <span class="gift-widget__progress-next">${esc(t("to_unlock_next", {
+          amount: G.formatPrice(nextTier.minAmount - thresholdBase),
+          budget: G.formatPrice(nextTier.giftAmount),
+        }))}</span>
+      `
+      : `<span class="gift-widget__progress-current">${esc(t("gift_budget_max", { amount: G.formatPrice(activeTier.giftAmount) }))}</span>`;
+
+    const progressHtml = `
+      <div class="gift-widget__progress">
+        <div class="gift-widget__progress-info">${infoText}</div>
+        ${renderScale(allTiers, activeTier, thresholdBase, STEP_WIDTH)}
+      </div>
+    `;
+
+    // ── Selected gifts ──
+    const selectedHtml = giftItems.length === 0 ? "" : `
+      <div class="gift-widget__selected-list">
+        ${giftItems.map((item) => `
+          <div class="gift-widget__selected-item" data-gift-key="${esc(item.key)}">
+            <img src="${esc(item.image || "")}" alt="${esc(item.product_title)}" class="gift-widget__selected-image" loading="lazy" />
             <div class="gift-widget__selected-info">
-              <p class="gift-widget__selected-name">${item.product_title}</p>
-              <p class="gift-widget__selected-price">${G.formatPrice(G.getOriginalUnitPrice(item))}</p>
+              <p class="gift-widget__selected-name">${esc(item.product_title)}</p>
+              <p class="gift-widget__selected-price">${esc(G.formatPrice(G.getOriginalUnitPrice(item)))}</p>
             </div>
             <button type="button"
               class="gift-widget__selected-remove"
-              onclick="window.giftWidget.removeGift('${item.key}')"
+              data-gift-remove="${esc(item.key)}"
+              aria-label="${esc(t("remove"))}"
               ${removingGiftKey === item.key ? "disabled" : ""}>
               <span class="gift-widget__remove-label" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -629,272 +437,108 @@
               ${removingGiftKey === item.key ? '<span class="gift-widget__remove-spinner"></span>' : ""}
             </button>
           </div>
-        `,
-        )
-        .join("");
+        `).join("")}
+      </div>
+    `;
 
-      selectedHtml = `
-        <div class="gift-widget__selected-list">
-          ${giftCards}
-        </div>
-      `;
-    }
-
-    // ── Gift selection section ──
-    let selectionHtml = "";
-
-    if (!activeTier) {
-      selectionHtml = `
-        <p class="gift-widget__subtitle">
-          ${t("unlock_more")}
-        </p>
-      `;
-    } else if (remainingBudget <= 0) {
-      selectionHtml = `
-        <h2 class="gift-widget__budget-full-title gift-widget__budget-full-title--success">
-          ${t("budget_full", { amount: G.formatPrice(activeTier.giftAmount) })}
-        </h2>
-      `;
-    } else {
-      const budgetLabel = giftItems.length > 0
-        ? t("remaining", { amount: G.formatPrice(remainingBudget) })
-        : t("choose_up_to", { amount: G.formatPrice(activeTier.giftAmount) });
-
-      // Show skeleton placeholder cards immediately (prevents layout jump)
-      const skeletonCards = Array.from({ length: 5 }, () => `
-        <div class="gift-widget__card gift-widget__card--skeleton">
-          <div class="gift-widget__skeleton-image"></div>
-          <div class="gift-widget__info">
-            <div class="gift-widget__skeleton-line gift-widget__skeleton-line--name"></div>
-            <div class="gift-widget__skeleton-line gift-widget__skeleton-line--price"></div>
-          </div>
-          <div class="gift-widget__skeleton-button"></div>
-        </div>
-      `).join("");
-
-      selectionHtml = `
-        <div class="gift-widget__carousel gift-widget__carousel--loading">${skeletonCards}</div>
-      `;
-
-      const isStep1 = activeTier &&
-        remainingBudget > 0 &&
-        giftItems.length === 0 &&
-        !hasExternalDiscount(cart);
-      const skipButtonHtml = isStep1 ? `
-        <button type="button" class="gift-widget__skip-button" id="gift-widget-skip">
-          ${t("skip_step")}
-        </button>
-      ` : "";
-
-      const widgetHtml = `
-        <div class="gift-widget${isStep1 ? " gift-widget--step1" : ""}">
-          <p class="gift-widget__promo-title">${t("promo_title")}</p>
-          <p class="gift-widget__subtitle">${budgetLabel}</p>
+    // Budget fully used: nothing more to choose
+    if (remainingBudget <= 0) {
+      setAllContainersHtml(`
+        <div class="gift-widget">
+          <p class="gift-widget__promo-title">${esc(t("promo_title"))}</p>
+          <p class="gift-widget__subtitle">${esc(t("budget_label", { amount: G.formatPrice(activeTier.giftAmount) }))}</p>
           ${progressHtml}
           ${selectedHtml}
-          ${selectionHtml}
-          <p class="gift-widget__footnote">${t("footnote")}</p>
-          ${skipButtonHtml}
+          <h2 class="gift-widget__budget-full-title gift-widget__budget-full-title--success">
+            ${esc(t("budget_full", { amount: G.formatPrice(activeTier.giftAmount) }))}
+          </h2>
+          <p class="gift-widget__footnote">${esc(t("footnote"))}</p>
         </div>
-      `;
-
-      // Render to all containers
-      containers.forEach((el) => { el.innerHTML = widgetHtml; });
-
-      // Attach skip button handler
-      containers.forEach((el) => {
-        const skipBtn = el.querySelector("#gift-widget-skip");
-        if (skipBtn) {
-          skipBtn.addEventListener("click", () => {
-            const sections = getMainCartSections();
-            sections.forEach((s) => { s.style.display = ""; });
-            el.classList.remove("gift-widget-container--step1");
-            el.querySelector(".gift-widget")?.classList.remove("gift-widget--step1");
-            // Scroll to cart content
-            sections[0]?.scrollIntoView({ behavior: "smooth", block: "start" });
-          });
-        }
-      });
-
-      // Auto-scroll scale to current position
-      scrollScaleToCurrent(containers, allTiers, thresholdBase, STEP_WIDTH);
-
-      const excludeIds = new Set(
-        cart.items
-          .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
-          .map((item) => String(item.variant_id)),
-      );
-
-      // Check sessionStorage cache first
-      let cachedProducts = getCachedProducts(remainingBudget);
-      let products = null;
-      if (cachedProducts && cachedProducts.length > 0) {
-        // Filter out excluded variants from cached results
-        products = cachedProducts.filter((p) => !excludeIds.has(String(p.variantId)));
-      }
-
-      if (!products) {
-        productsLoading = true;
-        try {
-          products = await fetchGiftProducts(remainingBudget, excludeIds);
-          setCachedProducts(remainingBudget, products);
-        } catch (e) {
-          console.error("[Gift Widget] Failed to fetch products:", e);
-          containers.forEach((el) => {
-            const carousel = el.querySelector(".gift-widget__carousel--loading");
-            if (carousel) {
-              carousel.outerHTML = `
-                <div class="gift-widget__selection-loading">
-                  <p class="gift-widget__subtitle">${t("unable_load")}</p>
-                  <button type="button" class="gift-widget__retry">${t("retry")}</button>
-                </div>
-              `;
-              const retryBtn = el.querySelector(".gift-widget__retry");
-              if (retryBtn) {
-                retryBtn.addEventListener("click", () => renderWidget(cart, activeTier, nextTier, thresholdBase));
-              }
-            }
-          });
-          productsLoading = false;
-          return;
-        }
-        productsLoading = false;
-      }
-      giftProducts = products;
-
-      // Update selection section in all containers
-      let selectionReplacementHtml;
-      if (products.length === 0) {
-        selectionReplacementHtml = "";
-      } else {
-        const productCards = products
-          .map(
-            (p) => `
-            <div class="gift-widget__card" data-variant-id="${p.variantId}">
-              <img src="${p.image}" alt="${p.title}" class="gift-widget__image" loading="lazy" />
-              <div class="gift-widget__info">
-                <p class="gift-widget__name">${p.title}</p>
-                <p class="gift-widget__price">${G.formatPrice(p.price)}</p>
-              </div>
-              <button type="button" class="gift-widget__select" onclick="window.giftWidget.selectGift('${p.variantId}', '${activeTier.id}')">
-                <span class="gift-widget__select-label">${t("select")}</span>
-                <span class="gift-widget__select-spinner" style="display:none"></span>
-              </button>
-            </div>
-          `,
-          )
-          .join("");
-
-        selectionReplacementHtml = `
-          <div class="gift-widget__carousel">${productCards}</div>
-        `;
-      }
-
-      containers.forEach((el) => {
-        const loadingCarousel = el.querySelector(".gift-widget__carousel--loading");
-        if (loadingCarousel) {
-          loadingCarousel.outerHTML = selectionReplacementHtml;
-        }
-      });
-
-      return; // Already rendered
-    }
-
-    // Render full widget (no product selection needed) to all containers
-    if (!activeTier) {
-      // Compact/short variant: no bonus unlocked yet
-      const amountToFirst = allTiers.length > 0 ? allTiers[0].minAmount - thresholdBase : 0;
-      const compactHtml = `
-        <div class="gift-widget gift-widget--compact">
-          <p class="gift-widget__promo-title">${t("promo_title")}</p>
-          <p class="gift-widget__subtitle">
-            ${allTiers.length > 0 ? t("to_unlock_first", { amount: G.formatPrice(amountToFirst) }) : t("unlock_more")}
-          </p>
-          <p class="gift-widget__footnote">${t("footnote")}</p>
-        </div>
-      `;
-      containers.forEach((el) => { el.innerHTML = compactHtml; });
+      `);
       return;
     }
 
-    const fullWidgetHtml = `
-      <div class="gift-widget">
-        <p class="gift-widget__promo-title">${t("promo_title")}</p>
-        <p class="gift-widget__subtitle">
-          ${activeTier ? t("budget_label", { amount: G.formatPrice(activeTier.giftAmount) }) : t("unlock_free")}
-        </p>
+    // ── Gift selection ──
+    const budgetLabel = giftItems.length > 0
+      ? t("remaining", { amount: G.formatPrice(remainingBudget) })
+      : t("choose_up_to", { amount: G.formatPrice(activeTier.giftAmount) });
+
+    // Skeleton cards first (prevents layout jump), replaced once products load
+    const skeletonCards = Array.from({ length: 5 }, () => `
+      <div class="gift-widget__card gift-widget__card--skeleton">
+        <div class="gift-widget__skeleton-image"></div>
+        <div class="gift-widget__info">
+          <div class="gift-widget__skeleton-line gift-widget__skeleton-line--name"></div>
+          <div class="gift-widget__skeleton-line gift-widget__skeleton-line--price"></div>
+        </div>
+        <div class="gift-widget__skeleton-button"></div>
+      </div>
+    `).join("");
+
+    const step1 = isStepOne(state);
+    setAllContainersHtml(`
+      <div class="gift-widget${step1 ? " gift-widget--step1" : ""}">
+        <p class="gift-widget__promo-title">${esc(t("promo_title"))}</p>
+        <p class="gift-widget__subtitle">${esc(budgetLabel)}</p>
         ${progressHtml}
         ${selectedHtml}
-        ${selectionHtml}
-        <p class="gift-widget__footnote">${t("footnote")}</p>
+        <div class="gift-widget__carousel gift-widget__carousel--loading">${skeletonCards}</div>
+        <p class="gift-widget__footnote">${esc(t("footnote"))}</p>
+        ${step1 ? `<button type="button" class="gift-widget__skip-button" data-gift-skip>${esc(t("skip_step"))}</button>` : ""}
       </div>
-    `;
-    containers.forEach((el) => { el.innerHTML = fullWidgetHtml; });
-  }
+    `);
 
-  // ─── Gift products fetch ───────────────────────────────────
+    scrollScaleToCurrent(containers, allTiers, thresholdBase, STEP_WIDTH);
 
-  async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set()) {
-    const appUrl = "/apps/gift-threshold";
+    const excludeIds = new Set(
+      cart.items
+        .filter((item) => !item.properties?.[GIFT_PROPERTY_KEY])
+        .map((item) => String(item.variant_id)),
+    );
+
+    let products;
     try {
-      const res = await fetch(
-        `${appUrl}/products?maxPrice=${maxPrice}`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const products = (data.products || []).filter(
-        (p) => !excludeVariantIds.has(String(p.variantId)),
-      );
-      console.log(`[Gift Widget] API returned ${products.length} eligible gifts (maxPrice=${maxPrice} cents)`);
-      return products;
+      products = await G.fetchGiftProducts(remainingBudget, excludeIds);
     } catch (e) {
-      console.warn("[Gift Widget] API products fetch failed, falling back to /products.json:", e);
-      // Fallback to storefront endpoint (no exclusion filtering)
-      const allProducts = [];
-      let page = 1;
-      const perPage = 250;
-      while (page <= 4) {
-        const res = await fetch(`/products.json?limit=${perPage}&page=${page}`, {
-          headers: { Accept: "application/json" },
-        });
-        if (!res.ok) break;
-        const data = await res.json();
-        const products = data.products || [];
-        if (products.length === 0) break;
-        allProducts.push(...products);
-        if (products.length < perPage) break;
-        page++;
-      }
-
-      const eligible = [];
-      for (const product of allProducts) {
-        const image = product.images?.[0]?.src || "";
-        for (const variant of product.variants || []) {
-          const priceCents = Math.round(parseFloat(variant.price || "0") * 100);
-          if (
-            priceCents > 0 &&
-            priceCents <= maxPrice &&
-            variant.available !== false &&
-            !excludeVariantIds.has(String(variant.id))
-          ) {
-            eligible.push({
-              productId: String(product.id),
-              variantId: String(variant.id),
-              title:
-                variant.title === "Default Title"
-                  ? product.title
-                  : `${product.title} — ${variant.title}`,
-              price: priceCents,
-              image,
-            });
-          }
-        }
-      }
-
-      console.log(`[Gift Widget] Fallback found ${eligible.length} eligible gifts (maxPrice=${maxPrice} cents) from ${allProducts.length} products`);
-      return eligible;
+      console.error("[Gift Widget] Failed to fetch products:", e);
+      getContainers().forEach((el) => {
+        const carousel = el.querySelector(".gift-widget__carousel--loading");
+        if (!carousel) return;
+        carousel.outerHTML = `
+          <div class="gift-widget__selection-loading">
+            <p class="gift-widget__subtitle">${esc(t("unable_load"))}</p>
+            <button type="button" class="gift-widget__retry">${esc(t("retry"))}</button>
+          </div>
+        `;
+        el.querySelector(".gift-widget__retry")?.addEventListener("click", () => renderWidget(cart, state));
+      });
+      return;
     }
+
+    const selectionHtml = products.length === 0
+      ? `<p class="gift-widget__subtitle">${esc(t("no_products", { amount: G.formatPrice(remainingBudget) }))}</p>`
+      : `
+        <div class="gift-widget__carousel">
+          ${products.map((p) => `
+            <div class="gift-widget__card" data-variant-id="${esc(p.variantId)}">
+              <img src="${esc(p.image)}" alt="${esc(p.title)}" class="gift-widget__image" loading="lazy" />
+              <div class="gift-widget__info">
+                <p class="gift-widget__name">${esc(p.title)}</p>
+                <p class="gift-widget__price">${esc(G.formatPrice(p.price))}</p>
+              </div>
+              <button type="button" class="gift-widget__select" data-gift-select="${esc(p.variantId)}" data-tier-id="${esc(activeTier.id)}">
+                <span class="gift-widget__select-label">${esc(t("select"))}</span>
+                <span class="gift-widget__select-spinner" style="display:none"></span>
+              </button>
+            </div>
+          `).join("")}
+        </div>
+      `;
+
+    getContainers().forEach((el) => {
+      const loadingCarousel = el.querySelector(".gift-widget__carousel--loading");
+      if (loadingCarousel) loadingCarousel.outerHTML = selectionHtml;
+    });
   }
 
   // ─── Cart actions (delegate to gift-core) ──────────────────
@@ -906,23 +550,23 @@
     const allButtons = document.querySelectorAll(".gift-widget__select");
     allButtons.forEach((btn) => { btn.disabled = true; });
 
-    const clickedCard = document.querySelector(`.gift-widget__card[data-variant-id="${variantId}"]`);
-    const clickedBtn = clickedCard?.querySelector(".gift-widget__select");
-    const clickedLabel = clickedBtn?.querySelector(".gift-widget__select-label");
-    const clickedSpinner = clickedBtn?.querySelector(".gift-widget__select-spinner");
-    if (clickedLabel) clickedLabel.style.display = "none";
-    if (clickedSpinner) clickedSpinner.style.display = "inline-block";
+    const clickedBtns = document.querySelectorAll(`[data-gift-select="${CSS.escape(String(variantId))}"]`);
+    const toggleSpinner = (loading) => clickedBtns.forEach((btn) => {
+      const label = btn.querySelector(".gift-widget__select-label");
+      const spinner = btn.querySelector(".gift-widget__select-spinner");
+      if (label) label.style.display = loading ? "none" : "";
+      if (spinner) spinner.style.display = loading ? "inline-block" : "none";
+    });
+    toggleSpinner(true);
     const restoreSelection = () => {
       allButtons.forEach((btn) => { btn.disabled = false; });
-      if (clickedLabel) clickedLabel.style.display = "";
-      if (clickedSpinner) clickedSpinner.style.display = "none";
+      toggleSpinner(false);
     };
 
     try {
-      let result = await G.addGift(variantId, tierId);
+      let result = await G.addGift(variantId, Number(tierId));
       if (result.code === "PROMO_CHOICE_REQUIRED") {
-        const codes = result.discountCodes || [];
-        const codeLabel = codes.join(", ");
+        const codeLabel = (result.discountCodes || []).join(", ");
         const useGift = await G.requestPromoChoice({
           title: t("promo_choice_title"),
           message: t("promo_choice_message", { code: codeLabel }),
@@ -933,26 +577,23 @@
           restoreSelection();
           return;
         }
-        result = await G.addGift(variantId, tierId, { replaceExternalDiscounts: true });
+        result = await G.addGift(variantId, Number(tierId), { replaceExternalDiscounts: true });
       }
       if (!result.ok) {
-        const error = new Error(result.error || "Unable to add this gift.");
+        const error = new Error(result.error || t("notif_add_failed"));
         error.result = result;
         throw error;
       }
-      // Immediately transition to step 2 (show cart) before the async
-      // section refresh, so the user sees the cart appear smoothly
+      // gift-core already refreshed the cart; show it right away
       forceStep2();
-      await refreshCartSection();
     } catch (e) {
       console.error("[Gift Widget] Failed to add gift:", e);
       const conflictCodes = e.result?.discountCodes || [];
       const message = e.result?.code === "DISCOUNT_COMBINATION_CONFLICT"
         ? t("promo_conflict", { code: conflictCodes.join(", ") })
-        : (e.message || "Unable to add this gift.");
+        : (e.message || t("notif_add_failed"));
       showWidgetError(message);
       showNotification(message, "warning");
-
       restoreSelection();
     } finally {
       isSelectingGift = false;
@@ -963,352 +604,117 @@
     if (removingGiftKey) return;
     removingGiftKey = key;
 
-    const removeBtn = document.querySelector(`[data-gift-key="${key}"] .gift-widget__selected-remove`);
-    if (removeBtn) {
-      removeBtn.disabled = true;
-      const label = removeBtn.querySelector(".gift-widget__remove-label");
+    const removeBtns = document.querySelectorAll(`[data-gift-remove="${CSS.escape(key)}"]`);
+    removeBtns.forEach((btn) => {
+      btn.disabled = true;
+      const label = btn.querySelector(".gift-widget__remove-label");
       if (label) label.style.display = "none";
-      if (!removeBtn.querySelector(".gift-widget__remove-spinner")) {
+      if (!btn.querySelector(".gift-widget__remove-spinner")) {
         const spinner = document.createElement("span");
         spinner.className = "gift-widget__remove-spinner";
         spinner.style.display = "inline-block";
-        removeBtn.appendChild(spinner);
+        btn.appendChild(spinner);
       }
-    }
+    });
 
     try {
       const result = await G.removeGift(key);
       if (!result.ok) {
-        throw new Error(result.error || "Unable to remove gift.");
+        throw new Error(result.error || t("notif_remove_failed"));
       }
-      await refreshCartSection();
     } catch (e) {
       console.error("[Gift Widget] Failed to remove gift:", e);
-      showNotification("Unable to remove gift. Please try again.", "warning");
-      if (removeBtn) {
-        removeBtn.disabled = false;
-        const label = removeBtn.querySelector(".gift-widget__remove-label");
+      showNotification(t("notif_remove_failed"), "warning");
+      removeBtns.forEach((btn) => {
+        btn.disabled = false;
+        const label = btn.querySelector(".gift-widget__remove-label");
         if (label) label.style.display = "";
-        const spinner = removeBtn.querySelector(".gift-widget__remove-spinner");
-        if (spinner) spinner.remove();
-      }
+        btn.querySelector(".gift-widget__remove-spinner")?.remove();
+      });
     } finally {
       removingGiftKey = null;
     }
   }
 
-  async function removeAllGifts(cart) {
-    const gifts = G.getGiftItems(cart);
-    for (const gift of gifts) {
-      try {
-        await G.removeGiftByKey(gift.key);
-      } catch (e) {
-        console.error("[Gift Widget] Failed to remove gift:", e);
-      }
+  // Delegated click handling — survives re-renders and section swaps.
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || !target.closest("[data-gift-widget]")) return;
+
+    const selectBtn = target.closest("[data-gift-select]");
+    if (selectBtn) {
+      selectGift(selectBtn.dataset.giftSelect, selectBtn.dataset.tierId);
+      return;
     }
-
-    const updatedCart = await G.fetchCart();
-    const nonGiftCodes = (updatedCart.discount_codes || [])
-      .filter((discount) => discount.applicable !== false && discount.code && !discount.code.startsWith("BONUS-") && !discount.code.startsWith("GIFT-"))
-      .map((discount) => discount.code);
-    await fetch("/cart/update.js", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ discount: nonGiftCodes.join(",") }),
-    });
-  }
-
-  // ─── Cart abuse prevention ─────────────────────────────────
-
-  function interceptCartChanges() {
-    const originalFetch = window.fetch;
-    window.fetch = async function (input, init) {
-      const url = typeof input === "string" ? input : input?.url || "";
-      const body = init?.body;
-
-      if (url.includes("/cart/change.js") || url.includes("/cart/update.js") || url.includes("/cart/add.js")) {
-        const parsed = parseBody(body);
-        if (parsed) {
-          const cart = await G.fetchCart().catch(() => null);
-          if (cart) {
-            const giftKeys = new Set(G.getGiftItems(cart).map((item) => item.key));
-            const giftVariantIds = new Set(G.getGiftItems(cart).map((item) => String(item.variant_id)));
-            const giftQtyByKey = new Map(G.getGiftItems(cart).map((item) => [item.key, item.quantity]));
-
-            if (url.includes("/cart/change.js")) {
-              if (parsed.id && giftKeys.has(parsed.id)) {
-                const currentQty = giftQtyByKey.get(parsed.id) || 0;
-                if (parsed.quantity > currentQty) {
-                  console.warn("[Gift Widget] Blocked qty increase on gift item");
-                  showNotification("Gift quantity cannot be increased from cart. Use the gift selector to add more.", "warning");
-                  return new Response(JSON.stringify(cart), {
-                    status: 200,
-                    headers: { "Content-Type": "application/json" },
-                  });
-                }
-              }
-              if (parsed.line) {
-                const lineIndex = parsed.line - 1;
-                const item = cart.items[lineIndex];
-                if (item && giftKeys.has(item.key)) {
-                  const currentQty = giftQtyByKey.get(item.key) || 0;
-                  if (parsed.quantity > currentQty) {
-                    console.warn("[Gift Widget] Blocked qty increase (line)");
-                    showNotification("Gift quantity cannot be increased from cart. Use the gift selector to add more.", "warning");
-                    return new Response(JSON.stringify(cart), {
-                      status: 200,
-                      headers: { "Content-Type": "application/json" },
-                    });
-                  }
-                }
-              }
-            }
-
-            if (url.includes("/cart/update.js") && parsed.updates) {
-              let modified = false;
-              if (Array.isArray(parsed.updates)) {
-                const newUpdates = [...parsed.updates];
-                cart.items.forEach((item, index) => {
-                  if (giftKeys.has(item.key) && newUpdates[index] > item.quantity) {
-                    newUpdates[index] = item.quantity;
-                    modified = true;
-                  }
-                });
-                if (modified) {
-                  showNotification("Gift quantity cannot be increased from cart.", "warning");
-                  return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, updates: newUpdates }) });
-                }
-              } else if (typeof parsed.updates === "object") {
-                const newUpdates = { ...parsed.updates };
-                for (const key of Object.keys(newUpdates)) {
-                  if (giftKeys.has(key)) {
-                    const currentQty = giftQtyByKey.get(key) || 0;
-                    if (newUpdates[key] > currentQty) {
-                      newUpdates[key] = currentQty;
-                      modified = true;
-                    }
-                  }
-                }
-                if (modified) {
-                  showNotification("Gift quantity cannot be increased from cart.", "warning");
-                  return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, updates: newUpdates }) });
-                }
-              }
-            }
-
-            if (url.includes("/cart/add.js") && parsed.items) {
-              let modified = false;
-              const newItems = parsed.items.map((item) => {
-                if (giftVariantIds.has(String(item.id)) && item.quantity > 1) {
-                  modified = true;
-                  return { ...item, quantity: 1 };
-                }
-                return item;
-              });
-              if (modified) {
-                showNotification("Gift items are limited to 1 quantity per add.", "warning");
-                return originalFetch(input, { ...init, body: JSON.stringify({ ...parsed, items: newItems }) });
-              }
-            }
-          }
-        }
-      }
-
-      return originalFetch(input, init);
-    };
-
-    const originalOpen = XMLHttpRequest.prototype.open;
-    const originalSend = XMLHttpRequest.prototype.send;
-
-    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-      this._giftWidgetUrl = url;
-      return originalOpen.call(this, method, url, ...rest);
-    };
-
-    XMLHttpRequest.prototype.send = function (body) {
-      const url = this._giftWidgetUrl || "";
-      if (url.includes("/cart/change.js") || url.includes("/cart/update.js")) {
-        const parsed = parseBody(body);
-        if (parsed) {
-          this._giftWidgetBody = parsed;
-        }
-      }
-      return originalSend.call(this, body);
-    };
-
-    document.addEventListener("submit", async (e) => {
-      const form = e.target;
-      if (!form || !form.action) return;
-      const action = form.getAttribute("action") || "";
-      if (!action.includes("/cart")) return;
-
-      const formData = new FormData(form);
-      const updates = formData.get("updates[]") || formData.get("updates");
-      if (!updates) return;
-
-      const cart = await G.fetchCart().catch(() => null);
-      if (!cart) return;
-
-      const giftKeys = new Set(G.getGiftItems(cart).map((item) => item.key));
-      const giftQtyByKey = new Map(G.getGiftItems(cart).map((item) => [item.key, item.quantity]));
-      if (giftKeys.size === 0) return;
-
-      const updatesEntries = formData.getAll("updates[]");
-      let hasAbuse = false;
-      cart.items.forEach((item, index) => {
-        if (giftKeys.has(item.key) && updatesEntries[index]) {
-          const currentQty = giftQtyByKey.get(item.key) || 0;
-          if (Number(updatesEntries[index]) > currentQty) {
-            hasAbuse = true;
-          }
-        }
+    const removeBtn = target.closest("[data-gift-remove]");
+    if (removeBtn) {
+      removeGift(removeBtn.dataset.giftRemove);
+      return;
+    }
+    if (target.closest("[data-gift-skip]")) {
+      const sections = getMainCartSections();
+      sections.forEach((s) => { s.style.display = ""; });
+      getContainers().forEach((el) => {
+        el.classList.remove("gift-widget-container--step1");
+        el.querySelector(".gift-widget")?.classList.remove("gift-widget--step1");
       });
-
-      if (hasAbuse) {
-        e.preventDefault();
-        e.stopPropagation();
-        showNotification("Gift quantity cannot be increased from cart.", "warning");
-      }
-    }, true);
-  }
-
-  function parseBody(body) {
-    if (!body) return null;
-    if (typeof body === "string") {
-      try { return JSON.parse(body); } catch { return null; }
+      sections[0]?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    if (body instanceof FormData) {
-      const obj = {};
-      for (const [key, value] of body.entries()) {
-        if (key.endsWith("[]")) {
-          if (!obj[key]) obj[key] = [];
-          obj[key].push(value);
-        } else {
-          obj[key] = value;
-        }
-      }
-      return obj;
-    }
-    return null;
-  }
-
-  function disableGiftQuantityInputs(cart) {
-    const gifts = G.getGiftItems(cart);
-    if (gifts.length === 0) return;
-
-    const giftKeys = new Set(gifts.map((g) => g.key));
-    const giftQtyByKey = new Map(gifts.map((g) => [g.key, g.quantity]));
-
-    const cartItems = document.querySelectorAll(
-      // Dawn selectors
-      "[data-id^='template--'][data-id*='cart-items'] .cart-item, " +
-      "cart-drawer-items .cart-item, " +
-      "form[action='/cart'] .cart-item, " +
-      // Prestige selectors
-      "form.cart-page line-item, " +
-      "cart-drawer line-item"
-    );
-
-    cartItems.forEach((item) => {
-      // Dawn: cart-remove-button a[href*="/cart/change"]
-      // Prestige: a[href*="/cart/change"] (line-item.url_to_remove)
-      const removeLink = item.querySelector('a[href*="/cart/change"], cart-remove-button a[href*="/cart/change"]');
-      let key = item.getAttribute("data-key") || item.getAttribute("data-line-key");
-      if (!key && removeLink) {
-        try {
-          key = new URL(removeLink.href, window.location.origin).searchParams.get("id");
-        } catch {}
-      }
-
-      if (key && giftKeys.has(key)) {
-        const currentQty = (key && giftQtyByKey.get(key)) || 1;
-        const inputs = item.querySelectorAll("input[name='quantity'], input[name='updates[]'], .quantity__input, [data-quantity-input]");
-        inputs.forEach((input) => {
-          input.max = String(currentQty);
-          input.min = "1";
-          input.value = String(currentQty);
-          input.setAttribute("readonly", "readonly");
-        });
-        const buttons = item.querySelectorAll(".quantity__button, [data-quantity-button]");
-        buttons.forEach((btn) => {
-          const isPlus = btn.name === "plus" ||
-                         btn.classList.contains("quantity__button--plus") ||
-                         btn.getAttribute("data-action") === "increment" ||
-                         (btn.getAttribute("aria-label") || "").includes("Increase") ||
-                         btn.querySelector(".icon-plus, [data-icon='plus']");
-          if (isPlus) {
-            btn.disabled = true;
-            btn.style.pointerEvents = "none";
-            btn.style.opacity = "0.5";
-          }
-        });
-      }
-    });
-  }
+  });
 
   // ─── Cart update listener ──────────────────────────────────
 
-  function listenForCartUpdates() {
-    function scheduleCartRefresh(cart = null) {
-      if (cart && typeof cart.total_price === "number") pendingEventCart = cart;
-      if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
-      cartUpdateDebounce = setTimeout(async () => {
-        cartUpdateDebounce = null;
-        const nextCart = pendingEventCart;
-        pendingEventCart = null;
-        await onCartUpdate(nextCart || await G.fetchCart());
-      }, cart ? 75 : 300);
-    }
+  function scheduleCartRefresh(cart = null) {
+    if (cart && typeof cart.total_price === "number") pendingEventCart = cart;
+    if (cartUpdateDebounce) clearTimeout(cartUpdateDebounce);
+    cartUpdateDebounce = setTimeout(async () => {
+      cartUpdateDebounce = null;
+      const nextCart = pendingEventCart;
+      pendingEventCart = null;
+      await onCartUpdate(nextCart || await G.fetchCart());
+    }, cart ? 75 : 300);
+  }
 
-    ["cart:updated", "cart:refresh", "cart:change"].forEach((eventName) => {
-      window.addEventListener(eventName, (event) => {
-        if (isSelectingGift || removingGiftKey) return;
-        const eventCart = event?.detail?.cart || event?.detail?.baseCart;
-        scheduleCartRefresh(eventCart);
+  function listenForCartUpdates() {
+    // Our own gift changes
+    G.onCartUpdate((cart) => scheduleCartRefresh(cart));
+
+    // Cart changes made by the theme (quantity buttons, product forms)
+    G.onCartMutation(() => {
+      if (isSelectingGift || removingGiftKey) return;
+      scheduleCartRefresh();
+    });
+
+    // Themes that announce cart changes with events
+    ["cart:updated", "cart:refresh", "cart:change", "cart-update"].forEach((eventName) => {
+      document.addEventListener(eventName, (event) => {
+        if (G.isRefreshing() || isSelectingGift || removingGiftKey) return;
+        scheduleCartRefresh(event?.detail?.cart || event?.detail?.baseCart);
       });
     });
 
-    const cartItemsContainer =
-      // Dawn selectors
-      document.querySelector("[data-id^='template--'][data-id*='cart-items']") ||
-      document.querySelector("#cart") ||
-      document.querySelector("cart-drawer-items") ||
-      // Prestige selectors
-      document.querySelector("form.cart-page") ||
-      document.querySelector("cart-drawer .cart-drawer__items") ||
-      document.querySelector("cart-drawer");
-
-    if (cartItemsContainer && typeof MutationObserver !== "undefined") {
+    // A theme re-render can replace the block with fresh (unrendered) markup.
+    if (typeof MutationObserver !== "undefined") {
       let observerDebounce = null;
-      const observer = new MutationObserver(() => {
-        if (isRefreshingSection || isSelectingGift || removingGiftKey) return;
+      new MutationObserver(() => {
         if (observerDebounce) clearTimeout(observerDebounce);
-        observerDebounce = setTimeout(async () => {
+        observerDebounce = setTimeout(() => {
           observerDebounce = null;
-          const containers = getContainers();
-          const anyEmpty = [...containers].some((el) => el.children.length === 0);
-          if (containers.length === 0 || anyEmpty) {
-            if (window.giftWidget && typeof window.giftWidget._init === "function") {
-              await window.giftWidget._init();
-            }
-          } else {
-            const cart = await G.fetchCart();
-            await onCartUpdate(cart);
-          }
+          if (initPromise || handlingUpdate || isSelectingGift || removingGiftKey) return;
+          const stale = [...getContainers()].some((el) => el.dataset.giftRendered !== "true");
+          if (stale) init();
         }, 300);
-      });
-      observer.observe(cartItemsContainer, { childList: true, subtree: true });
+      }).observe(document.body, { childList: true, subtree: true });
     }
   }
 
   // ─── Utils ─────────────────────────────────────────────────
 
   function showNotification(message, type) {
-    const containers = getContainers();
-    if (containers.length === 0) return;
-    containers.forEach((el) => {
+    getContainers().forEach((el) => {
       const notif = document.createElement("div");
       notif.className = `gift-widget__notification gift-widget__notification--${type}`;
+      notif.setAttribute("role", "status");
       notif.textContent = message;
       el.prepend(notif);
       setTimeout(() => notif.remove(), 5000);
@@ -1323,7 +729,6 @@
     _init: init,
   };
 
-  interceptCartChanges();
   listenForCartUpdates();
 
   if (document.readyState === "loading") {

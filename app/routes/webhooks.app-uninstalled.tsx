@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { deleteSessionsForShop } from "~/lib/admin-api.server";
 import { clearSubscription } from "~/models/billing.server";
+import { authenticate } from "~/shopify.server";
 
 /**
  * Webhook: app/uninstalled
@@ -13,12 +14,8 @@ import { clearSubscription } from "~/models/billing.server";
  * of leaving a stale 401-causing row in the Session table.
  */
 export async function action({ request }: ActionFunctionArgs) {
-  const topic = request.headers.get("X-Shopify-Topic");
-  const shop = request.headers.get("X-Shopify-Shop-Domain");
-
-  if (topic !== "app/uninstalled" || !shop) {
-    return json({ error: "Invalid webhook" }, { status: 400 });
-  }
+  // Verifies the HMAC signature; throws a 401 response for forged requests.
+  const { shop } = await authenticate.webhook(request);
 
   try {
     const deleted = await deleteSessionsForShop(shop);

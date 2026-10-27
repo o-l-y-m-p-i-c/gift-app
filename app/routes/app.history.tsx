@@ -12,16 +12,20 @@ import { useLoaderData } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { getHistory, getStats } from "~/models/history.server";
+import { getSettings } from "~/models/settings.server";
+import { formatMoney } from "~/lib/tiers";
 import { authenticate } from "~/shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { session } = await authenticate.admin(request);
   const shopId = session.shop;
 
-  const [history, stats] = await Promise.all([
+  const [history, stats, settings] = await Promise.all([
     getHistory(shopId),
     getStats(shopId),
+    getSettings(shopId),
   ]);
+  const money = (cents: number) => formatMoney(cents, settings.currencyCode);
 
   return json({
     history: history.map((h) => ({
@@ -29,14 +33,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
       orderId: h.orderId,
       orderUrl: `https://admin.shopify.com/store/${shopId.replace(".myshopify.com", "")}/orders/${encodeURIComponent(h.orderId)}`, 
       giftProductTitle: h.giftProductTitle,
-      giftProductPrice: (h.giftProductPrice / 100).toFixed(2),
-      cartTotal: (h.cartTotal / 100).toFixed(2),
-      thresholdBase: (h.thresholdBase / 100).toFixed(2),
+      giftProductPrice: money(h.giftProductPrice),
+      cartTotal: money(h.cartTotal),
+      thresholdBase: money(h.thresholdBase),
       date: h.createdAt.toISOString().split("T")[0],
     })),
     stats: {
       totalGifts: stats.totalGifts,
-      totalValue: (stats.totalValue / 100).toFixed(2),
+      totalValue: money(stats.totalValue),
+      averageValue: money(stats.totalGifts > 0 ? Math.round(stats.totalValue / stats.totalGifts) : 0),
     },
     shopId,
   });
@@ -51,9 +56,9 @@ export default function HistoryPage() {
       #{h.orderId.slice(-8)}
     </Link>,
     h.giftProductTitle,
-    `${h.giftProductPrice} €`,
-    `${h.cartTotal} €`,
-    `${h.thresholdBase} €`,
+    h.giftProductPrice,
+    h.cartTotal,
+    h.thresholdBase,
   ]);
 
   return (
@@ -76,7 +81,7 @@ export default function HistoryPage() {
                 <Card>
                   <BlockStack gap="200" align="center">
                     <Text variant="heading2xl" as="p">
-                      {stats.totalValue} €
+                      {stats.totalValue}
                     </Text>
                     <Text as="p" tone="subdued">Total Gift Value</Text>
                   </BlockStack>
@@ -86,9 +91,7 @@ export default function HistoryPage() {
                 <Card>
                   <BlockStack gap="200" align="center">
                     <Text variant="heading2xl" as="p">
-                      {stats.totalGifts > 0
-                        ? ((parseFloat(stats.totalValue) / stats.totalGifts)).toFixed(2)
-                        : "0.00"} €
+                      {stats.averageValue}
                     </Text>
                     <Text as="p" tone="subdued">Avg Gift Value</Text>
                   </BlockStack>

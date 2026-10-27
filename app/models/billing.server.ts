@@ -24,6 +24,7 @@ export async function hasBillingAccess(shopId: string) {
 const BILLING_STATE_QUERY = `
   query BillingState {
     shop {
+      currencyCode
       plan {
         partnerDevelopment
       }
@@ -57,7 +58,7 @@ const BILLING_STATE_QUERY = `
 `;
 
 /**
- * Pull dev-store status and subscriptions from Shopify, store them and
+ * Pull dev-store status, shop currency and subscriptions from Shopify, store them and
  * record a payment for every paid billing cycle seen so far.
  * Skips the API call when synced recently unless `force` is set.
  */
@@ -80,6 +81,15 @@ export async function syncBilling(shopId: string, { force = false } = {}) {
   }
 
   const isDevStore = Boolean(data?.data?.shop?.plan?.partnerDevelopment);
+  const shopCurrency = data?.data?.shop?.currencyCode;
+  if (shopCurrency) {
+    // Piggybacks on this sync so tier amounts are shown in the shop currency.
+    await prisma.appSettings.upsert({
+      where: { shopId },
+      create: { shopId, currencyCode: shopCurrency },
+      update: { currencyCode: shopCurrency },
+    });
+  }
   const subscriptions: any[] = data?.data?.currentAppInstallation?.allSubscriptions?.nodes || [];
   const now = new Date();
 
