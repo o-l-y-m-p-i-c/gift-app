@@ -79,6 +79,76 @@ export function tierToFields(tier: TierInput, currencyCode: string) {
   ];
 }
 
+// ─── CSV import / export ──────────────────────────────────────
+
+export const CSV_COLUMNS = ["min_amount", "gift_percent", "active"] as const;
+export const MAX_IMPORT_TIERS = 100;
+
+export type ImportedTier = { minAmount: number; giftPercent: number; active: boolean };
+export type CsvError =
+  | { key: "tiers.importErrEmpty" | "tiers.importErrHeader" }
+  | { key: "tiers.importErrTooMany"; values: { max: number } }
+  | { key: "tiers.importErrRow" | "tiers.importErrDuplicate"; values: { row: number } };
+
+/** CSV with amounts in the shop currency's major unit, e.g. "100.00". */
+export function tiersToCsv(tiers: { minAmount: number; giftPercent: number; active: boolean }[]) {
+  const rows = tiers.map((t) => [(t.minAmount / 100).toFixed(2), String(t.giftPercent), String(t.active)]);
+  return [CSV_COLUMNS.join(","), ...rows.map((row) => row.join(","))].join("\n") + "\n";
+}
+
+const ACTIVE_VALUES: Record<string, boolean> = {
+  "": true, true: true, yes: true, "1": true, active: true,
+  false: false, no: false, "0": false, inactive: false,
+};
+
+/**
+ * Parse a tier CSV. Accepts "," or ";" separators (";" files may use a
+ * decimal comma, as Excel writes them in many locales); "active" is optional.
+ */
+export function parseTiersCsv(text: string): { tiers: ImportedTier[]; errors: CsvError[] } {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (lines.length === 0) return { tiers: [], errors: [{ key: "tiers.importErrEmpty" }] };
+
+  const separator = lines[0].includes(";") ? ";" : ",";
+  const split = (line: string) => line.split(separator).map((cell) => cell.trim().replace(/^"(.*)"$/, "$1").trim());
+  const header = split(lines[0]).map((cell) => cell.toLowerCase());
+  const col = { min: header.indexOf("min_amount"), percent: header.indexOf("gift_percent"), active: header.indexOf("active") };
+  if (col.min < 0 || col.percent < 0) return { tiers: [], errors: [{ key: "tiers.importErrHeader" }] };
+
+  const rows = lines.slice(1);
+  if (rows.length === 0) return { tiers: [], errors: [{ key: "tiers.importErrEmpty" }] };
+  if (rows.length > MAX_IMPORT_TIERS) {
+    return { tiers: [], errors: [{ key: "tiers.importErrTooMany", values: { max: MAX_IMPORT_TIERS } }] };
+  }
+
+  const number = (cell = "") => Number(separator === ";" ? cell.replace(",", ".") : cell);
+  const tiers: ImportedTier[] = [];
+  const errors: CsvError[] = [];
+  const seen = new Set<number>();
+
+  rows.forEach((line, index) => {
+    const row = index + 2; // 1-based, after the header
+    const cells = split(line);
+    const minAmount = Math.round(number(cells[col.min]) * 100);
+    const giftPercent = number(cells[col.percent]);
+    const active = ACTIVE_VALUES[(col.active >= 0 ? cells[col.active] ?? "" : "").toLowerCase()];
+    if (
+      !cells[col.min] || !Number.isFinite(minAmount) || minAmount <= 0 ||
+      !cells[col.percent] || !Number.isFinite(giftPercent) || giftPercent <= 0 || giftPercent > 100 ||
+      active === undefined
+    ) {
+      errors.push({ key: "tiers.importErrRow", values: { row } });
+    } else if (seen.has(minAmount)) {
+      errors.push({ key: "tiers.importErrDuplicate", values: { row } });
+    } else {
+      seen.add(minAmount);
+      tiers.push({ minAmount, giftPercent, active });
+    }
+  });
+
+  return { tiers: tiers.sort((a, b) => a.minAmount - b.minAmount), errors };
+}
+
 /** Format an amount in cents with the shop currency. */
 export function formatMoney(cents: number, currencyCode: string, locale = "en-US") {
   return new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode }).format(

@@ -4,8 +4,10 @@ import {
   calculateGiftAmount,
   findActiveTier,
   formatMoney,
+  parseTiersCsv,
   tierFromMetaobject,
   tierToFields,
+  tiersToCsv,
 } from "./tiers";
 
 describe("tiers", () => {
@@ -34,6 +36,39 @@ describe("tiers", () => {
       label: "$100.00+ · 7.5%",
       ...input,
     });
+  });
+
+  it("exports tiers as CSV and imports them back", () => {
+    const tiers = [
+      { minAmount: 10000, giftPercent: 7.5, active: true },
+      { minAmount: 5000, giftPercent: 5, active: false },
+    ];
+    const csv = tiersToCsv(tiers);
+    expect(csv).toBe("min_amount,gift_percent,active\n100.00,7.5,true\n50.00,5,false\n");
+    expect(parseTiersCsv(csv)).toEqual({ tiers: [tiers[1], tiers[0]], errors: [] });
+  });
+
+  it("reads Excel-style CSV with semicolons, decimal commas and no active column", () => {
+    const csv = "\uFEFFMin_Amount;Gift_Percent\r\n\"100,50\";7,5\r\n\r\n200;10\r\n";
+    expect(parseTiersCsv(csv)).toEqual({
+      tiers: [
+        { minAmount: 10050, giftPercent: 7.5, active: true },
+        { minAmount: 20000, giftPercent: 10, active: true },
+      ],
+      errors: [],
+    });
+  });
+
+  it("reports bad rows, duplicates and a missing header", () => {
+    const csv = "min_amount,gift_percent,active\n100,5,true\n0,5,true\n100,6,true\n200,150,true\n300,5,maybe\n";
+    expect(parseTiersCsv(csv).errors).toEqual([
+      { key: "tiers.importErrRow", values: { row: 3 } },
+      { key: "tiers.importErrDuplicate", values: { row: 4 } },
+      { key: "tiers.importErrRow", values: { row: 5 } },
+      { key: "tiers.importErrRow", values: { row: 6 } },
+    ]);
+    expect(parseTiersCsv("amount,percent\n100,5\n").errors).toEqual([{ key: "tiers.importErrHeader" }]);
+    expect(parseTiersCsv("min_amount,gift_percent\n").errors).toEqual([{ key: "tiers.importErrEmpty" }]);
   });
 
   it("reads an inactive tier and tolerates missing values", () => {

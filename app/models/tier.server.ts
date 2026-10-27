@@ -5,6 +5,7 @@ import {
   calculateGiftAmount,
   tierFromMetaobject,
   tierToFields,
+  type ImportedTier,
   type Tier,
   type TierInput,
 } from "~/lib/tiers";
@@ -161,8 +162,7 @@ export async function createTier(shopId: string, data: Omit<TierInput, "active">
   cache.delete(shopId);
 }
 
-export async function updateTier(shopId: string, id: string, data: { active: boolean }) {
-  await findTier(shopId, id);
+async function updateMetaobject(shopId: string, id: string, fields: { key: string; value: string }[]) {
   await mutate(
     `#graphql
       mutation UpdateGiftTier($id: ID!, $metaobject: MetaobjectUpdateInput!) {
@@ -178,11 +178,52 @@ export async function updateTier(shopId: string, id: string, data: { active: boo
         }
       }
     `,
-    { id, metaobject: { fields: [{ key: "active", value: String(data.active) }] } },
+    { id, metaobject: { fields } },
     shopId,
     "metaobjectUpdate",
   );
+}
+
+export async function updateTier(shopId: string, id: string, data: { active: boolean }) {
+  await findTier(shopId, id);
+  await updateMetaobject(shopId, id, [{ key: "active", value: String(data.active) }]);
   cache.delete(shopId);
+}
+
+/**
+ * Import tiers from a CSV file. Rows matching an existing tier's minimum
+ * amount update it, other rows create tiers; with `replace`, tiers missing
+ * from the file are deleted. Unchanged tiers aren't written.
+ */
+export async function importTiers(shopId: string, rows: ImportedTier[], { replace = false } = {}) {
+  const [existing, { currencyCode }] = await Promise.all([getTiers(shopId), getSettings(shopId)]);
+  const byAmount = new Map(existing.map((tier) => [tier.minAmount, tier]));
+  const counts = { created: 0, updated: 0, removed: 0 };
+  cache.delete(shopId);
+
+  try {
+    for (const row of rows) {
+      const tier = { ...row, giftAmount: calculateGiftAmount(row.minAmount, row.giftPercent) };
+      const current = byAmount.get(row.minAmount);
+      if (!current) {
+        await createMetaobject(shopId, tier, currencyCode);
+        counts.created += 1;
+      } else if (current.giftPercent !== tier.giftPercent || current.giftAmount !== tier.giftAmount || current.active !== tier.active) {
+        await updateMetaobject(shopId, current.id, tierToFields(tier, currencyCode));
+        counts.updated += 1;
+      }
+    }
+    if (replace) {
+      const keep = new Set(rows.map((row) => row.minAmount));
+      for (const tier of existing.filter((t) => !keep.has(t.minAmount))) {
+        await deleteMetaobject(shopId, tier.id);
+        counts.removed += 1;
+      }
+    }
+  } finally {
+    cache.delete(shopId);
+  }
+  return counts;
 }
 
 export async function deleteTier(shopId: string, id: string) {
