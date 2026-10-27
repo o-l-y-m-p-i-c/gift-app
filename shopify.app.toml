@@ -42,6 +42,42 @@ scopes = "read_products,read_discounts,write_discounts,read_orders"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
+# Gift tiers are stored as app-owned metaobjects (type "$app:gift_tier").
+# Merchants can view them under Content → Metaobjects; changes go through
+# the app's Tiers page so they're validated and the storefront config stays in sync.
+[metaobjects.app.gift_tier]
+name = "Gift tier"
+description = "A cart threshold and the gift budget it unlocks. Managed by the Gift Threshold app."
+display_name_field = "label"
+access.admin = "merchant_read"
+access.storefront = "none"
+
+  [metaobjects.app.gift_tier.fields.label]
+  name = "Label"
+  type = "single_line_text_field"
+  required = true
+
+  [metaobjects.app.gift_tier.fields.min_amount]
+  name = "Minimum cart amount (minor units)"
+  description = "In the shop currency's minor unit, e.g. 10000 = 100.00"
+  type = "number_integer"
+  required = true
+
+  [metaobjects.app.gift_tier.fields.gift_percent]
+  name = "Gift percent"
+  type = "number_decimal"
+  required = true
+
+  [metaobjects.app.gift_tier.fields.gift_amount]
+  name = "Gift budget (minor units)"
+  type = "number_integer"
+  required = true
+
+  [metaobjects.app.gift_tier.fields.active]
+  name = "Active"
+  type = "boolean"
+  required = true
+
 [auth]
 redirect_urls = [ "https://gift-app-ux53.onrender.com/auth/callback" ]
 
