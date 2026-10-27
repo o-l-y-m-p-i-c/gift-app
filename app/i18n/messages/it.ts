@@ -64,6 +64,7 @@ export const it: Messages = {
   "tiers.msgDeleted": "Livello eliminato",
   "tiers.msgSampleLoaded": "Caricati {count} livelli di esempio",
   "tiers.msgInvalid": "Inserisci un importo minimo positivo e una percentuale tra 0 e 100.",
+  "tiers.msgDuplicate": "Esiste già un livello con questo importo minimo.",
 
   "settings.title": "Impostazioni",
   "settings.subtitle": "Configura il funzionamento dei regali nel tuo negozio",

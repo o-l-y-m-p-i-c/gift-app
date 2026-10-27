@@ -64,6 +64,7 @@ export const de: Messages = {
   "tiers.msgDeleted": "Stufe gelöscht",
   "tiers.msgSampleLoaded": "{count} Beispielstufen geladen",
   "tiers.msgInvalid": "Gib einen positiven Mindestbetrag und einen Prozentsatz zwischen 0 und 100 ein.",
+  "tiers.msgDuplicate": "Für diesen Mindestbetrag gibt es bereits eine Stufe.",
 
   "settings.title": "Einstellungen",
   "settings.subtitle": "Lege fest, wie Geschenke in deinem Shop funktionieren",

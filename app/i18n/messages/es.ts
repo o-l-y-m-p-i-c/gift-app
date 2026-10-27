@@ -64,6 +64,7 @@ export const es: Messages = {
   "tiers.msgDeleted": "Nivel eliminado",
   "tiers.msgSampleLoaded": "Se cargaron {count} niveles de ejemplo",
   "tiers.msgInvalid": "Introduce un importe mínimo positivo y un porcentaje entre 0 y 100.",
+  "tiers.msgDuplicate": "Ya existe un nivel con este importe mínimo.",
 
   "settings.title": "Configuración",
   "settings.subtitle": "Configura cómo funcionan los regalos en tu tienda",

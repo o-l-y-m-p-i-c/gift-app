@@ -538,7 +538,7 @@
     };
 
     try {
-      let result = await G.addGift(variantId, Number(tierId));
+      let result = await G.addGift(variantId, tierId);
       if (result.code === "PROMO_CHOICE_REQUIRED") {
         const codeLabel = (result.discountCodes || []).join(", ");
         const useGift = await G.requestPromoChoice({
@@ -551,7 +551,7 @@
           restoreSelection();
           return;
         }
-        result = await G.addGift(variantId, Number(tierId), { replaceExternalDiscounts: true });
+        result = await G.addGift(variantId, tierId, { replaceExternalDiscounts: true });
       }
       if (!result.ok) {
         const error = new Error(result.error || t("notif_add_failed"));

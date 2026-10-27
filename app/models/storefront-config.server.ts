@@ -1,6 +1,7 @@
 import { prisma } from "~/db.server";
 import { adminGraphql } from "~/lib/admin-api.server";
 import { getBillingAccess } from "~/lib/billing.server";
+import { getActiveTiers } from "~/models/tier.server";
 
 /**
  * The storefront config (tiers, settings, billing window) is written to an
@@ -13,7 +14,7 @@ export const CONFIG_KEY = "config";
 
 export async function buildStorefrontConfig(shopId: string) {
   const [tiers, settings, billing] = await Promise.all([
-    prisma.giftTier.findMany({ where: { shopId, active: true }, orderBy: { minAmount: "asc" } }),
+    getActiveTiers(shopId),
     prisma.appSettings.findUnique({ where: { shopId } }),
     prisma.shopBilling.findUnique({ where: { shopId } }),
   ]);

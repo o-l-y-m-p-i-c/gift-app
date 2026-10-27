@@ -41,6 +41,44 @@ export function findActiveTier<T extends { minAmount: number }>(
   return active[0] ?? null;
 }
 
+/** A gift tier as stored in the app-owned `$app:gift_tier` metaobject. */
+export interface Tier {
+  id: string; // Metaobject GID
+  label: string;
+  minAmount: number;
+  giftPercent: number;
+  giftAmount: number;
+  active: boolean;
+}
+
+export type TierInput = Omit<Tier, "id" | "label">;
+
+export function tierLabel(minAmount: number, giftPercent: number, currencyCode: string) {
+  return `${formatMoney(minAmount, currencyCode)}+ · ${giftPercent}%`;
+}
+
+export function tierFromMetaobject(node: { id: string; fields: { key: string; value: string | null }[] }): Tier {
+  const field = Object.fromEntries(node.fields.map((f) => [f.key, f.value ?? ""]));
+  return {
+    id: node.id,
+    label: field.label ?? "",
+    minAmount: Number.parseInt(field.min_amount, 10) || 0,
+    giftPercent: Number.parseFloat(field.gift_percent) || 0,
+    giftAmount: Number.parseInt(field.gift_amount, 10) || 0,
+    active: field.active === "true",
+  };
+}
+
+export function tierToFields(tier: TierInput, currencyCode: string) {
+  return [
+    { key: "label", value: tierLabel(tier.minAmount, tier.giftPercent, currencyCode) },
+    { key: "min_amount", value: String(tier.minAmount) },
+    { key: "gift_percent", value: String(tier.giftPercent) },
+    { key: "gift_amount", value: String(tier.giftAmount) },
+    { key: "active", value: String(tier.active) },
+  ];
+}
+
 /** Format an amount in cents with the shop currency. */
 export function formatMoney(cents: number, currencyCode: string, locale = "en-US") {
   return new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode }).format(

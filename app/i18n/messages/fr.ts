@@ -64,6 +64,7 @@ export const fr: Messages = {
   "tiers.msgDeleted": "Palier supprimé",
   "tiers.msgSampleLoaded": "{count} paliers d'exemple chargés",
   "tiers.msgInvalid": "Saisissez un montant minimum positif et un pourcentage entre 0 et 100.",
+  "tiers.msgDuplicate": "Un palier avec ce montant minimum existe déjà.",
 
   "settings.title": "Paramètres",
   "settings.subtitle": "Configurez le fonctionnement des cadeaux dans votre boutique",

@@ -11,7 +11,7 @@ export async function getHistory(shopId: string, limit = 50) {
 export async function createHistoryEntry(data: {
   shopId: string;
   orderId: string;
-  tierId: number;
+  tierId: string;
   giftProductId: string;
   giftProductTitle: string;
   giftProductPrice: number;

@@ -18,7 +18,7 @@ import { authenticate } from "~/shopify.server";
  *   {
  *     eligible: boolean,
  *     reason: "ok" | "no_tier" | "unavailable" | "over_budget" | "busy",
- *     tierId?: number,
+ *     tierId?: string,            // gift_tier metaobject GID
  *     giftBudget?: number,        // cents
  *     usedBudget?: number,        // cents
  *     remainingBudget?: number,   // cents

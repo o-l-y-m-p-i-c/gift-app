@@ -67,6 +67,7 @@ export const en = {
   "tiers.msgDeleted": "Tier deleted",
   "tiers.msgSampleLoaded": "Loaded {count} sample tiers",
   "tiers.msgInvalid": "Enter a positive minimum amount and a percentage between 0 and 100.",
+  "tiers.msgDuplicate": "A tier with this minimum amount already exists.",
 
   // Settings
   "settings.title": "Settings",

@@ -38,7 +38,8 @@ model Session {
   @@index([shop])
 }
 
-// Gift tiers — threshold configurations
+// Legacy gift tiers. Tiers now live in the $app:gift_tier metaobject; rows here
+// are only read once per shop to migrate them (AppSettings.tiersMigratedAt).
 model GiftTier {
   id           Int      @id @default(autoincrement())
   shopId       String
@@ -65,6 +66,7 @@ model AppSettings {
   excludedCollections      String[] @default([])
   excludedTags             String[] @default([])
   currencyCode             String   @default("USD") // shop currency; tier amounts use it
+  tiersMigratedAt          DateTime? // legacy GiftTier rows copied to metaobjects
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }
@@ -74,7 +76,7 @@ model GiftHistory {
   id                Int      @id @default(autoincrement())
   shopId            String
   orderId           String
-  tierId            Int
+  tierId            String   // gift_tier metaobject GID (older rows: legacy GiftTier id)
   giftProductId     String
   giftProductTitle  String
   giftProductPrice  Int      // in cents

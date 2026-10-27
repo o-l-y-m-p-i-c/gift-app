@@ -64,6 +64,7 @@ export const nl: Messages = {
   "tiers.msgDeleted": "Niveau verwijderd",
   "tiers.msgSampleLoaded": "{count} voorbeeldniveaus geladen",
   "tiers.msgInvalid": "Vul een positief minimumbedrag en een percentage tussen 0 en 100 in.",
+  "tiers.msgDuplicate": "Er bestaat al een niveau met dit minimumbedrag.",
 
   "settings.title": "Instellingen",
   "settings.subtitle": "Stel in hoe cadeaus werken in je winkel",

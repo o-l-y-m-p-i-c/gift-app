@@ -16,6 +16,7 @@ import { useLoaderData, useActionData, useSubmit } from "@remix-run/react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import {
+  DuplicateTierError,
   getTiers,
   createTier,
   updateTier,
@@ -72,31 +73,25 @@ export async function action({ request }: ActionFunctionArgs) {
       }
       const giftAmount = calculateGiftAmount(minAmount, giftPercent);
 
-      await createTier({
-        shopId,
-        minAmount,
-        giftPercent,
-        giftAmount,
-        collectionId: null,
-      });
+      await createTier(shopId, { minAmount, giftPercent, giftAmount });
 
       await syncStorefrontConfig(shopId);
       return result({ success: true, messageKey: "tiers.msgCreated" });
     }
 
     if (intent === "update") {
-      const id = parseInt(formData.get("id") as string);
+      const id = String(formData.get("id"));
       const active = formData.get("active") === "true";
 
-      await updateTier(id, shopId, { active });
+      await updateTier(shopId, id, { active });
 
       await syncStorefrontConfig(shopId);
       return result({ success: true, messageKey: "tiers.msgUpdated" });
     }
 
     if (intent === "delete") {
-      const id = parseInt(formData.get("id") as string);
-      await deleteTier(id, shopId);
+      const id = String(formData.get("id"));
+      await deleteTier(shopId, id);
       await syncStorefrontConfig(shopId);
       return result({ success: true, messageKey: "tiers.msgDeleted" });
     }
@@ -109,6 +104,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
     return result({ success: false, messageKey: "common.unknownAction" }, 400);
   } catch (error) {
+    if (error instanceof DuplicateTierError) {
+      return result({ success: false, messageKey: "tiers.msgDuplicate" }, 400);
+    }
     return result({ success: false, error: (error as Error).message }, 500);
   }
 }
@@ -124,7 +122,7 @@ export default function TiersPage() {
   const [newMinAmount, setNewMinAmount] = useState("");
   const [newPercent, setNewPercent] = useState("");
 
-  const handleTierActiveChange = (id: number, active: boolean) => {
+  const handleTierActiveChange = (id: string, active: boolean) => {
     const formData = new FormData();
     formData.append("intent", "update");
     formData.append("id", String(id));
@@ -149,7 +147,7 @@ export default function TiersPage() {
       onClick={() => {
         const formData = new FormData();
         formData.append("intent", "delete");
-        formData.append("id", String(tier.id));
+        formData.append("id", tier.id);
         submit(formData, { method: "post" });
       }}
       tone="critical"

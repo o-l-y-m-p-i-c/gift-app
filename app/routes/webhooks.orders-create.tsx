@@ -1,7 +1,8 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { prisma } from "~/db.server";
+import { findActiveTier } from "~/lib/tiers";
 import { getSettings } from "~/models/settings.server";
+import { getActiveTiers } from "~/models/tier.server";
 import { createHistoryEntry } from "~/models/history.server";
 import { authenticate } from "~/shopify.server";
 
@@ -63,14 +64,7 @@ export async function action({ request }: ActionFunctionArgs) {
     )];
     const giftImage = giftLineItems.find((item: any) => item.image?.src)?.image?.src || null;
 
-    const tier = await prisma.giftTier.findFirst({
-      where: {
-        shopId: shop,
-        minAmount: { lte: thresholdBase },
-        active: true,
-      },
-      orderBy: { minAmount: "desc" },
-    });
+    const tier = findActiveTier(await getActiveTiers(shop), thresholdBase);
 
     if (!tier) {
       return json({ success: true, message: "No matching tier" });

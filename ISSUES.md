@@ -41,6 +41,7 @@ Sorted by severity.
 | T10 | Product form detection covers only 3 selectors | Theme | Medium | Done | Product form selector setting, common variant events, URL and input polling |
 | S2 | getShopId can fall back to another shop | Security | Medium | Done | getShopId and other unused ?shop= helpers deleted |
 | B4 | Admin is English only; storefront has en, lv, ru | App Store | Medium | Done | Storefront and admin in 8 languages (en, de, fr, es, it, nl, lv, ru). The admin follows the language Shopify passes when it opens the app, then the browser language |
+| F3 | Tiers stored in PostgreSQL, not in Shopify | Data | Medium | Done | Tiers live in the app-owned `$app:gift_tier` metaobject (merchant read-only); tier IDs are metaobject GIDs; existing GiftTier rows are copied once per shop on first read |
 | F2 | Extension config split across several files | Functions | Medium | Done | Unused Rust functions removed; one shopify.extension.toml for the theme extension |
 | O3 | No tests, lint or CI for the app | Ops | Medium | Done | Vitest unit and jsdom tests (21), ESLint, GitHub Actions CI |
 | S4 | CORS allows any origin | Security | Low | Done | CORS headers only outside production |

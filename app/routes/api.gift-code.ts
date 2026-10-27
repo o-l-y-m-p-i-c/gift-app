@@ -6,6 +6,7 @@ import { adminGraphql } from "~/lib/admin-api.server";
 import { createRateLimiter } from "~/lib/rate-limit";
 import { hasBillingAccess } from "~/models/billing.server";
 import { cleanupExpiredGiftDiscounts, recordGiftDiscount } from "~/models/gift-discounts.server";
+import { getActiveTiers } from "~/models/tier.server";
 import { authenticate } from "~/shopify.server";
 
 // Each request creates a real discount code, so cap it per shop.
@@ -41,7 +42,7 @@ export async function action({ request }: ActionFunctionArgs) {
  *
  * Body:
  *   - giftVariantIds: string[]  — all gift variant IDs (existing + new)
- *   - tierId: number
+ *   - tierId: string — gift_tier metaobject GID
  *   - qualifyingVariantIds: string[] — non-gift cart variant IDs
  *   - shop: string
  *
@@ -59,7 +60,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
   const giftVariantIds: string[] = Array.isArray(body?.giftVariantIds)
     ? body.giftVariantIds.map((id: unknown) => String(id))
     : [];
-  const tierId = Number(body?.tierId);
+  const tierId = String(body?.tierId ?? "");
   const qualifyingVariantIds: string[] = Array.isArray(body?.qualifyingVariantIds)
     ? [...new Set<string>(body.qualifyingVariantIds.map((id: unknown) => String(id)))]
     : [];
@@ -68,7 +69,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
     giftVariantIds.length === 0 ||
     giftVariantIds.length > 50 ||
     giftVariantIds.some((id) => !/^\d+$/.test(id)) ||
-    !Number.isInteger(tierId) ||
+    !/^gid:\/\/shopify\/Metaobject\/\d+$/.test(tierId) ||
     qualifyingVariantIds.length === 0 ||
     qualifyingVariantIds.length > 100 ||
     qualifyingVariantIds.some((id) => !/^\d+$/.test(id))
@@ -76,9 +77,7 @@ async function handleGiftCode(shopDomain: string, body: any) {
     return corsJson({ error: "Invalid gift selection." }, { status: 400 });
   }
 
-  const tier = await prisma.giftTier.findFirst({
-    where: { id: tierId, shopId: shopDomain, active: true },
-  });
+  const tier = (await getActiveTiers(shopDomain)).find((t) => t.id === tierId);
 
   if (!tier) {
     return corsJson({ error: "Gift tier is unavailable." }, { status: 404 });

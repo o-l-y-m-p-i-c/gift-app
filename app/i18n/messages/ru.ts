@@ -64,6 +64,7 @@ export const ru: Messages = {
   "tiers.msgDeleted": "Уровень удалён",
   "tiers.msgSampleLoaded": "Загружено примерных уровней: {count}",
   "tiers.msgInvalid": "Укажите положительную минимальную сумму и процент от 0 до 100.",
+  "tiers.msgDuplicate": "Уровень с такой минимальной суммой уже существует.",
 
   "settings.title": "Настройки",
   "settings.subtitle": "Настройте работу подарков в магазине",

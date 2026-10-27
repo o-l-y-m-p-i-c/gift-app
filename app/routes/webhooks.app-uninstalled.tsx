@@ -1,6 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { prisma } from "~/db.server";
 import { deleteSessionsForShop } from "~/lib/admin-api.server";
 import { clearSubscription } from "~/models/billing.server";
 import { authenticate } from "~/shopify.server";
@@ -22,11 +21,6 @@ export async function action({ request }: ActionFunctionArgs) {
     console.info(
       `[webhook app/uninstalled] Deleted ${deleted} session(s) for ${shop}`,
     );
-
-    // Optionally deactivate gift tiers for the uninstalled shop
-    await prisma.giftTier
-      .updateMany({ where: { shopId: shop }, data: { active: false } })
-      .catch(() => {});
 
     // Shopify cancels the app subscription on uninstall; the trial start is
     // kept so a reinstall doesn't grant a new trial.

@@ -64,6 +64,7 @@ export const lv: Messages = {
   "tiers.msgDeleted": "Līmenis dzēsts",
   "tiers.msgSampleLoaded": "Ielādēti {count} parauga līmeņi",
   "tiers.msgInvalid": "Ievadi pozitīvu minimālo summu un procentu no 0 līdz 100.",
+  "tiers.msgDuplicate": "Līmenis ar šo minimālo summu jau pastāv.",
 
   "settings.title": "Iestatījumi",
   "settings.subtitle": "Iestati, kā dāvanas darbojas tavā veikalā",
