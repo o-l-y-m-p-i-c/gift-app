@@ -10,8 +10,17 @@ import {
   Button,
   DataTable,
   List,
+  Modal,
 } from "@shopify/polaris";
-import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import { useState } from "react";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useRevalidator,
+  useSubmit,
+} from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import {
@@ -78,21 +87,34 @@ export async function action({ request }: ActionFunctionArgs) {
     if (access.reason === "subscribed") {
       return result({ error: "billing.errSubscribed" }, 400);
     }
-    // Carry the remaining app trial over to the Shopify charge so the
-    // merchant isn't billed before the 14 days are up.
-    await billing.request({
-      plan: PRO_PLAN,
-      isTest: isTestBilling(),
-      trialDays: access.trialDaysLeft,
-    });
+    try {
+      // Carry the remaining app trial over to the Shopify charge so the
+      // merchant isn't billed before the 14 days are up. On success this
+      // throws a redirect to Shopify's approval page.
+      await billing.request({
+        plan: PRO_PLAN,
+        isTest: isTestBilling(),
+        trialDays: access.trialDaysLeft,
+      });
+    } catch (error) {
+      if (error instanceof Response) throw error;
+      console.error("[billing] Subscription request failed:", error);
+      return result({ error: "billing.errRequest" }, 502);
+    }
   }
 
   if (intent === "cancel" && state.subscriptionId) {
-    await billing.cancel({
-      subscriptionId: state.subscriptionId,
-      isTest: isTestBilling(),
-      prorate: true,
-    });
+    try {
+      await billing.cancel({
+        subscriptionId: state.subscriptionId,
+        isTest: isTestBilling(),
+        prorate: true,
+      });
+    } catch (error) {
+      if (error instanceof Response) throw error;
+      console.error("[billing] Cancel failed:", error);
+      return result({ error: "billing.errRequest" }, 502);
+    }
     await syncBilling(shopId, { force: true });
     return result({ message: "billing.msgCancelled" });
   }
@@ -113,6 +135,9 @@ export default function BillingPage() {
   const { plan, access, currentPeriodEnd, subscriptions } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
+  const submit = useSubmit();
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const { t, locale } = useI18n();
   const busyIntent = navigation.state !== "idle" ? navigation.formData?.get("intent") : null;
   const planPrice = formatMoney(plan.price, plan.currency, locale);
@@ -198,20 +223,13 @@ export default function BillingPage() {
                     </Form>
                   )}
                   {access.reason === "subscribed" && (
-                    <Form
-                      method="post"
-                      onSubmit={(event) => {
-                        if (!confirm(t("billing.cancelConfirm"))) {
-                          event.preventDefault();
-                        }
-                      }}
-                    >
-                      <input type="hidden" name="intent" value="cancel" />
-                      <Button submit tone="critical" loading={busyIntent === "cancel"}>
-                        {t("billing.cancel")}
-                      </Button>
-                    </Form>
+                    <Button tone="critical" loading={busyIntent === "cancel"} onClick={() => setConfirmCancel(true)}>
+                      {t("billing.cancel")}
+                    </Button>
                   )}
+                  <Button loading={revalidator.state === "loading"} onClick={() => revalidator.revalidate()}>
+                    {t("billing.refresh")}
+                  </Button>
                 </InlineStack>
               </BlockStack>
             </Card>
@@ -243,6 +261,25 @@ export default function BillingPage() {
           </BlockStack>
         </Layout.Section>
       </Layout>
+
+      <Modal
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        title={t("billing.cancelTitle")}
+        primaryAction={{
+          content: t("billing.cancel"),
+          destructive: true,
+          onAction: () => {
+            setConfirmCancel(false);
+            submit({ intent: "cancel" }, { method: "post" });
+          },
+        }}
+        secondaryActions={[{ content: t("billing.keep"), onAction: () => setConfirmCancel(false) }]}
+      >
+        <Modal.Section>
+          <Text as="p">{t("billing.cancelConfirm")}</Text>
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }
