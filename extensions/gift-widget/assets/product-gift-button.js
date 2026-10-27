@@ -43,12 +43,7 @@
       console.warn("[Product Gift Button] Could not parse variant JSON");
     }
 
-    let translations = {};
-    try {
-      translations = JSON.parse(container.querySelector("[data-gift-product-translations]")?.textContent || "{}");
-    } catch {
-      // Labels fall back to the block settings
-    }
+    const translations = G.readTranslations(container.querySelector("[data-gift-product-translations]"));
 
     function t(key, vars) {
       let str = translations[key];
@@ -59,8 +54,9 @@
       return str;
     }
 
+    // Labels from the locale file arrive HTML-escaped by Liquid's `t` filter.
     function getLabel(key) {
-      return container.dataset[key] || "";
+      return G.decodeHtml(container.dataset[key] || "");
     }
 
     // ─── Variant selection ─────────────────────────────────────

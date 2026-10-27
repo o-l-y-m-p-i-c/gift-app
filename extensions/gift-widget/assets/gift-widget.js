@@ -113,14 +113,7 @@
 
   let _translations = null;
   function getTranslations() {
-    if (_translations) return _translations;
-    try {
-      const el = document.querySelector("[data-gift-translations]");
-      if (el) _translations = JSON.parse(el.textContent);
-    } catch (e) {
-      console.warn("[Gift Widget] Failed to parse translations:", e);
-    }
-    if (!_translations) _translations = {};
+    if (!_translations) _translations = G.readTranslations(document.querySelector("[data-gift-translations]"));
     return _translations;
   }
 
@@ -419,7 +412,7 @@
       <div class="gift-widget__selected-list">
         ${giftItems.map((item) => `
           <div class="gift-widget__selected-item" data-gift-key="${esc(item.key)}">
-            <img src="${esc(item.image || "")}" alt="${esc(item.product_title)}" class="gift-widget__selected-image" loading="lazy" />
+            ${item.image ? `<img src="${esc(item.image)}" alt="${esc(item.product_title)}" class="gift-widget__selected-image" loading="lazy" />` : ""}
             <div class="gift-widget__selected-info">
               <p class="gift-widget__selected-name">${esc(item.product_title)}</p>
               <p class="gift-widget__selected-price">${esc(G.formatPrice(G.getOriginalUnitPrice(item)))}</p>
@@ -521,7 +514,7 @@
         <div class="gift-widget__carousel">
           ${products.map((p) => `
             <div class="gift-widget__card" data-variant-id="${esc(p.variantId)}">
-              <img src="${esc(p.image)}" alt="${esc(p.title)}" class="gift-widget__image" loading="lazy" />
+              ${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.title)}" class="gift-widget__image" loading="lazy" />` : ""}
               <div class="gift-widget__info">
                 <p class="gift-widget__name">${esc(p.title)}</p>
                 <p class="gift-widget__price">${esc(G.formatPrice(p.price))}</p>

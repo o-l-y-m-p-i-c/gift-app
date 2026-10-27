@@ -152,9 +152,7 @@
     const currency = activeCurrency();
     // The shop's money format is only valid for the shop currency.
     if (moneyFormat && (!shopCurrency || shopCurrency === currency)) {
-      const textarea = document.createElement("textarea");
-      textarea.innerHTML = moneyFormat; // decode HTML entities from Liquid
-      return formatShopMoney(cents, textarea.value.replace(/<[^>]*>/g, ""));
+      return formatShopMoney(cents, decodeHtml(moneyFormat).replace(/<[^>]*>/g, ""));
     }
     const locale = document.documentElement.lang || navigator.language || "en";
     try {
@@ -173,6 +171,27 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  /**
+   * Liquid's `t` filter returns HTML-escaped text ("isn&#39;t"). Decode it
+   * once so the widgets can escape it again safely when rendering.
+   */
+  function decodeHtml(value) {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = String(value ?? "");
+    return textarea.value;
+  }
+
+  /** Parse a translations JSON script tag into decoded strings. */
+  function readTranslations(el) {
+    try {
+      const raw = JSON.parse(el?.textContent || "{}");
+      return Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, decodeHtml(value)]));
+    } catch (e) {
+      console.warn("[gift-core] Failed to parse translations:", e);
+      return {};
+    }
   }
 
   async function fetchJson(url) {
@@ -1142,6 +1161,8 @@
     toPresentment,
     formatPrice,
     escapeHtml,
+    decodeHtml,
+    readTranslations,
     // Cart helpers (also exposed for UI scripts that need them)
     fetchCart,
     getLastCart: () => lastCart,

@@ -69,14 +69,7 @@
 
   let _translations = null;
   function getTranslations() {
-    if (_translations) return _translations;
-    try {
-      const el = document.querySelector("[data-gift-drawer-translations]");
-      if (el) _translations = JSON.parse(el.textContent);
-    } catch (e) {
-      console.warn("[Gift Drawer] Failed to parse translations:", e);
-    }
-    if (!_translations) _translations = {};
+    if (!_translations) _translations = G.readTranslations(document.querySelector("[data-gift-drawer-translations]"));
     return _translations;
   }
 
@@ -94,9 +87,11 @@
 
   // ─── Settings ──────────────────────────────────────────────
 
+  // Labels from the locale file arrive HTML-escaped by Liquid's `t` filter.
   function getSetting(key, fallback) {
     if (!sourceContainer) return fallback;
-    return sourceContainer.dataset[key] || fallback;
+    const value = sourceContainer.dataset[key];
+    return value ? G.decodeHtml(value) : fallback;
   }
 
   function getBoolSetting(key, fallback) {
@@ -370,7 +365,7 @@
     const cartUrl = esc(G.storefrontUrl("cart"));
     const cards = products.map((p) => `
       <a href="${cartUrl}" class="gift-drawer-widget__product" data-variant-id="${esc(p.variantId)}">
-        <img src="${esc(p.image)}" alt="${esc(p.title)}" class="gift-drawer-widget__product-image" loading="lazy" />
+        ${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.title)}" class="gift-drawer-widget__product-image" loading="lazy" />` : ""}
         <div class="gift-drawer-widget__product-info">
           <p class="gift-drawer-widget__product-name">${esc(p.title)}</p>
           <p class="gift-drawer-widget__product-price">${esc(G.formatPrice(p.price))}</p>
