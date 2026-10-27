@@ -122,10 +122,11 @@ export async function action({ request }: ActionFunctionArgs) {
   return result({ error: "billing.errUnknown" }, 400);
 }
 
-const STATUS_TONE: Record<string, "success" | "attention" | "critical" | "info" | undefined> = {
+// Same tones as Retail Network Map's Billing page.
+const STATUS_TONE: Record<string, "success" | "warning" | "critical" | "info" | undefined> = {
   ACTIVE: "success",
-  PENDING: "attention",
-  FROZEN: "attention",
+  PENDING: "warning",
+  FROZEN: "warning",
   DECLINED: "critical",
   CANCELLED: undefined,
   EXPIRED: undefined,
@@ -141,17 +142,19 @@ export default function BillingPage() {
   const { t, locale } = useI18n();
   const busyIntent = navigation.state !== "idle" ? navigation.formData?.get("intent") : null;
   const planPrice = formatMoney(plan.price, plan.currency, locale);
-  const trialEnd = access.trialEndsAt.split("T")[0];
+  // Dates in the admin's local format; stored values are UTC calendar dates.
+  const date = (value: string) => new Date(value).toLocaleDateString(locale, { timeZone: "UTC" });
+  const trialEnd = date(access.trialEndsAt);
 
   const statusBadge = {
     dev_store: <Badge tone="info">{t("billing.badgeDevStore")}</Badge>,
     subscribed: <Badge tone="success">{t("billing.badgeActive")}</Badge>,
-    trial: <Badge tone="attention">{t("billing.badgeTrial", { days: access.trialDaysLeft })}</Badge>,
+    trial: <Badge tone="warning">{t("billing.badgeTrial", { days: access.trialDaysLeft })}</Badge>,
     trial_expired: <Badge tone="critical">{t("billing.badgeTrialEnded")}</Badge>,
   }[access.reason];
 
   const rows = subscriptions.map((sub) => [
-    sub.date,
+    date(sub.date),
     sub.name,
     formatMoney(sub.amount, sub.currency, locale),
     t("billing.trialDays", { days: sub.trialDays }),
@@ -162,7 +165,7 @@ export default function BillingPage() {
   ]);
 
   return (
-    <Page title={t("billing.title")} subtitle={t("billing.subtitle")}>
+    <Page title={t("billing.title")}>
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
@@ -183,11 +186,8 @@ export default function BillingPage() {
                   {statusBadge}
                 </InlineStack>
 
-                <Text variant="heading2xl" as="p">
-                  {planPrice}
-                  <Text as="span" variant="bodyMd" tone="subdued">
-                    {" "}{t("billing.perMonth")}
-                  </Text>
+                <Text variant="headingLg" as="p">
+                  {planPrice} {t("billing.perMonth")}
                 </Text>
 
                 <List>
@@ -204,7 +204,7 @@ export default function BillingPage() {
                 )}
                 {access.reason === "subscribed" && currentPeriodEnd && (
                   <Text as="p" tone="subdued">
-                    {t("billing.periodEndsOn", { date: currentPeriodEnd })}
+                    {t("billing.periodEndsOn", { date: date(currentPeriodEnd) })}
                   </Text>
                 )}
                 {access.reason === "dev_store" && (
