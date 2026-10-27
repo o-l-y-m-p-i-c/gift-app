@@ -121,6 +121,18 @@
 <script src="{{ 'gift-widget.js' | asset_url }}" defer></script>
 {{ 'gift-widget.css' | asset_url | stylesheet_tag }}
 
+{%- if block.settings.custom_css != blank -%}
+  {%- comment -%}
+    Nested under this block's ID so the CSS only affects this widget.
+    "</" is neutralised so the code can't close the style tag.
+  {%- endcomment -%}
+  <style>
+    #gift-widget-{{ block.id }} {
+      {{ block.settings.custom_css | replace: '</', '<\/' }}
+    }
+  </style>
+{%- endif -%}
+
 {% schema %}
 {
   "name": "Gift Widget",
@@ -337,6 +349,12 @@
       "label": "App proxy path",
       "default": "/apps/gift-threshold",
       "info": "Change only if you renamed the app proxy URL in Shopify admin."
+    },
+    {
+      "type": "textarea",
+      "id": "custom_css",
+      "label": "Custom CSS",
+      "info": "Applies to this widget only. Example: .gift-widget__promo-title { color: #b5651d; } or .gift-widget { box-shadow: none; }"
     }
   ]
 }
