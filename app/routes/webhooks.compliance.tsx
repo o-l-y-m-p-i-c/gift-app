@@ -41,7 +41,10 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       case "SHOP_REDACT": {
+        // ShopTrial (domain and trial start only) is kept so a reinstall
+        // doesn't start a second free trial.
         await prisma.$transaction([
+          prisma.giftDiscount.deleteMany({ where: { shopId: shop } }),
           prisma.giftHistory.deleteMany({ where: { shopId: shop } }),
           prisma.giftTier.deleteMany({ where: { shopId: shop } }),
           prisma.appSettings.deleteMany({ where: { shopId: shop } }),

@@ -13,12 +13,16 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { getHistory, getStats } from "~/models/history.server";
 import { getSettings } from "~/models/settings.server";
+import { isGiftHistoryEnabled } from "~/lib/features.server";
 import { formatMoney } from "~/lib/tiers";
 import { useI18n } from "~/i18n/react";
 import { authenticate } from "~/shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { session } = await authenticate.admin(request);
+  const { session, redirect } = await authenticate.admin(request);
+  if (!isGiftHistoryEnabled()) {
+    throw redirect("/");
+  }
   const shopId = session.shop;
 
   const [history, stats, settings] = await Promise.all([

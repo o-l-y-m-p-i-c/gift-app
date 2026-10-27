@@ -3,8 +3,13 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
 import { adminGraphql } from "~/lib/admin-api.server";
+import { createRateLimiter } from "~/lib/rate-limit";
 import { hasBillingAccess } from "~/models/billing.server";
+import { cleanupExpiredGiftDiscounts, recordGiftDiscount } from "~/models/gift-discounts.server";
 import { authenticate } from "~/shopify.server";
+
+// Each request creates a real discount code, so cap it per shop.
+const allowGiftCode = createRateLimiter({ limit: 120, windowMs: 60 * 1000 });
 
 export async function action({ request }: ActionFunctionArgs) {
   const preflight = handleCorsPreflight(request);
@@ -13,6 +18,9 @@ export async function action({ request }: ActionFunctionArgs) {
   const { session } = await authenticate.public.appProxy(request);
   if (!session) {
     return corsJson({ error: "App proxy session is unavailable." }, { status: 401 });
+  }
+  if (!allowGiftCode(session.shop)) {
+    return corsJson({ error: "Too many gift requests. Try again in a minute." }, { status: 429 });
   }
 
   const body = await request.json().catch(() => null);
@@ -238,11 +246,17 @@ async function handleGiftCode(shopDomain: string, body: any) {
   }
 
   const errors = discountData.data?.discountCodeBxgyCreate?.userErrors || [];
+  const discountId = discountData.data?.discountCodeBxgyCreate?.codeDiscountNode?.id;
 
-  if (errors.length > 0 || !discountData.data?.discountCodeBxgyCreate?.codeDiscountNode) {
+  if (errors.length > 0 || !discountId) {
     console.error("[gift-code] Creation failed:", errors, discountData.errors || []);
     return corsJson({ error: errors[0]?.message || "Unable to create gift discount." }, { status: 422 });
   }
+
+  await recordGiftDiscount(discountId, shopDomain, endsAt);
+  cleanupExpiredGiftDiscounts(shopDomain).catch((e) =>
+    console.error("[gift-code] Expired code cleanup failed:", e?.message || e),
+  );
 
   return corsJson({ code, giftQuantity, totalGiftValue });
 }

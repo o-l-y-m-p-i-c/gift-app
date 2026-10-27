@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TRIAL_DAYS, getBillingAccess, getPaidPeriods } from "./billing.server";
+import { TRIAL_DAYS, getBillingAccess, nextTrialState } from "./billing.server";
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = new Date("2026-10-26T12:00:00Z");
@@ -39,18 +39,24 @@ describe("getBillingAccess", () => {
   });
 });
 
-describe("getPaidPeriods", () => {
-  it("starts billing after the trial and repeats every 30 days", () => {
-    const periods = getPaidPeriods(daysAgo(75), 14, now);
-    expect(periods.map((p) => p.start.toISOString().slice(0, 10))).toEqual([
-      "2026-08-26",
-      "2026-09-25",
-      "2026-10-25",
-    ]);
+describe("nextTrialState", () => {
+  it("restarts the trial when a development store is transferred to a paid plan", () => {
+    const trial = nextTrialState({ trialStartedAt: daysAgo(400), devStore: true }, false, now);
+    expect(trial).toEqual({ devStore: false, trialStartedAt: now });
+    expect(getBillingAccess({ ...trial, isDevStore: false, subscriptionStatus: null }, now)).toMatchObject({
+      hasAccess: true,
+      reason: "trial",
+      trialDaysLeft: TRIAL_DAYS,
+    });
   });
 
-  it("has no paid periods during the trial", () => {
-    expect(getPaidPeriods(daysAgo(5), 14, now)).toHaveLength(0);
+  it("keeps the original trial start otherwise", () => {
+    const started = daysAgo(20);
+    expect(nextTrialState({ trialStartedAt: started, devStore: false }, false, now).trialStartedAt).toBe(started);
+    expect(nextTrialState({ trialStartedAt: started, devStore: false }, true, now)).toEqual({
+      devStore: true,
+      trialStartedAt: started,
+    });
   });
 });
 

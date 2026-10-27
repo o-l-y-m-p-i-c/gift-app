@@ -17,8 +17,6 @@ export const PRO_PLAN = process.env.BILLING_PLAN_NAME?.trim() || "Gift App Pro";
 export const PLAN_PRICE = envNumber("BILLING_PLAN_PRICE", 9.99);
 export const PLAN_CURRENCY = process.env.BILLING_PLAN_CURRENCY?.trim().toUpperCase() || "USD";
 export const TRIAL_DAYS = envNumber("BILLING_TRIAL_DAYS", 14, { integer: true });
-// Fixed: Shopify bills recurring app charges every 30 days (BillingInterval.Every30Days).
-export const BILLING_CYCLE_DAYS = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -50,15 +48,17 @@ export function getBillingAccess(
 }
 
 /**
- * Paid billing cycles of a subscription: the first one starts when its
- * trial ends, then one every 30 days up to `until`.
+ * Trial state after learning the shop's current development-store status.
+ * A development store transferred to a merchant gets a full trial from the
+ * transfer, since its original trial ran out while it was free.
  */
-export function getPaidPeriods(createdAt: Date, trialDays: number, until: Date) {
-  const periods: { start: Date; end: Date }[] = [];
-  let start = createdAt.getTime() + trialDays * DAY_MS;
-  while (start <= until.getTime()) {
-    periods.push({ start: new Date(start), end: new Date(start + BILLING_CYCLE_DAYS * DAY_MS) });
-    start += BILLING_CYCLE_DAYS * DAY_MS;
-  }
-  return periods;
+export function nextTrialState(
+  trial: { trialStartedAt: Date; devStore: boolean },
+  isDevStore: boolean,
+  now = new Date(),
+) {
+  return {
+    devStore: isDevStore,
+    trialStartedAt: trial.devStore && !isDevStore ? now : trial.trialStartedAt,
+  };
 }

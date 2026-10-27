@@ -36,6 +36,9 @@ services:
         value: "14"
       - key: SHOPIFY_BILLING_TEST
         value: "false"
+      # Enable with the orders/create webhook once protected customer data is approved
+      - key: GIFT_HISTORY_ENABLED
+        value: "false"
       - key: NODE_ENV
         value: production
       - key: PORT

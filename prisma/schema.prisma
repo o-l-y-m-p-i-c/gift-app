@@ -102,6 +102,26 @@ model ShopBilling {
   updatedAt          DateTime  @updatedAt
 }
 
+// Trial start per shop. Unlike ShopBilling it survives shop/redact, so
+// reinstalling the app doesn't grant a second free trial.
+model ShopTrial {
+  shopId         String   @id
+  trialStartedAt DateTime @default(now())
+  devStore       Boolean  @default(false) // last known development-store status
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Single-use gift discount codes created for the storefront, deleted once expired
+model GiftDiscount {
+  id        String   @id // DiscountCodeNode GID
+  shopId    String
+  endsAt    DateTime
+  createdAt DateTime @default(now())
+
+  @@index([shopId, endsAt])
+}
+
 // Shopify app subscriptions (charges) the shop has created
 model BillingSubscription {
   id               String    @id // Shopify AppSubscription GID

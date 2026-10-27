@@ -1,14 +1,22 @@
 import { prisma } from "~/db.server";
 import { adminGraphql } from "~/lib/admin-api.server";
-import { PLAN_CURRENCY, getBillingAccess, getPaidPeriods } from "~/lib/billing.server";
+import { PLAN_CURRENCY, getBillingAccess, nextTrialState } from "~/lib/billing.server";
 import { syncStorefrontConfig } from "~/models/storefront-config.server";
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
+function getShopTrial(shopId: string) {
+  return prisma.shopTrial.upsert({ where: { shopId }, create: { shopId }, update: {} });
+}
+
 export async function getShopBilling(shopId: string) {
+  const existing = await prisma.shopBilling.findUnique({ where: { shopId } });
+  if (existing) return existing;
+  // A shop reinstalling after shop/redact keeps its original trial start.
+  const trial = await getShopTrial(shopId);
   return prisma.shopBilling.upsert({
     where: { shopId },
-    create: { shopId },
+    create: { shopId, trialStartedAt: trial.trialStartedAt, isDevStore: trial.devStore },
     update: {},
   });
 }
@@ -59,8 +67,7 @@ const BILLING_STATE_QUERY = `
 `;
 
 /**
- * Pull dev-store status, shop currency and subscriptions from Shopify, store them and
- * record a payment for every paid billing cycle seen so far.
+ * Pull dev-store status, shop currency and subscriptions from Shopify and store them.
  * Skips the API call when synced recently unless `force` is set.
  */
 export async function syncBilling(shopId: string, { force = false } = {}) {
@@ -101,7 +108,6 @@ export async function syncBilling(shopId: string, { force = false } = {}) {
     const createdAt = new Date(sub.createdAt);
     const currentPeriodEnd = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : null;
 
-    const previous = await prisma.billingSubscription.findUnique({ where: { id: sub.id } });
     await prisma.billingSubscription.upsert({
       where: { id: sub.id },
       create: {
@@ -118,33 +124,17 @@ export async function syncBilling(shopId: string, { force = false } = {}) {
       },
       update: { status: sub.status, currentPeriodEnd },
     });
-
-    // Charges only happen while the subscription is active; a subscription
-    // cancelled since the last sync still gets its cycles up to now.
-    if (sub.status === "ACTIVE" || previous?.status === "ACTIVE") {
-      const periods = getPaidPeriods(createdAt, sub.trialDays ?? 0, now);
-      if (periods.length > 0) {
-        await prisma.billingPayment.createMany({
-          data: periods.map((period) => ({
-            shopId,
-            subscriptionId: sub.id,
-            amount,
-            currencyCode,
-            periodStart: period.start,
-            periodEnd: period.end,
-            test: Boolean(sub.test),
-          })),
-          skipDuplicates: true,
-        });
-      }
-    }
   }
+
+  const trial = nextTrialState(await getShopTrial(shopId), isDevStore, now);
+  await prisma.shopTrial.update({ where: { shopId }, data: trial });
 
   const active = subscriptions.find((sub) => sub.status === "ACTIVE");
   const updated = await prisma.shopBilling.update({
     where: { shopId },
     data: {
       isDevStore,
+      trialStartedAt: trial.trialStartedAt,
       subscriptionId: active?.id ?? null,
       subscriptionStatus: active?.status ?? subscriptions[0]?.status ?? null,
       currentPeriodEnd: active?.currentPeriodEnd ? new Date(active.currentPeriodEnd) : null,
@@ -173,39 +163,4 @@ export async function getSubscriptions(shopId: string) {
     where: { shopId },
     orderBy: { createdAt: "desc" },
   });
-}
-
-export async function getPayments(shopId: string) {
-  return prisma.billingPayment.findMany({
-    where: { shopId },
-    orderBy: { periodStart: "desc" },
-  });
-}
-
-export async function getPaymentStats(shopId: string) {
-  const payments = await prisma.billingPayment.findMany({
-    where: { shopId, test: false },
-    select: { amount: true, periodStart: true },
-  });
-
-  const byMonth = new Map<string, { count: number; amount: number }>();
-  for (const payment of payments) {
-    const month = payment.periodStart.toISOString().slice(0, 7);
-    const entry = byMonth.get(month) ?? { count: 0, amount: 0 };
-    entry.count += 1;
-    entry.amount += payment.amount;
-    byMonth.set(month, entry);
-  }
-
-  return {
-    totalPaid: payments.reduce((total, payment) => total + payment.amount, 0),
-    paymentCount: payments.length,
-    lastPaymentAt: payments.reduce<Date | null>(
-      (latest, payment) => (!latest || payment.periodStart > latest ? payment.periodStart : latest),
-      null,
-    ),
-    byMonth: [...byMonth.entries()]
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([month, entry]) => ({ month, ...entry })),
-  };
 }

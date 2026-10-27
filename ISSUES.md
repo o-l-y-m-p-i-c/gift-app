@@ -4,11 +4,11 @@ Oct 27, 2026 · @Nick · updated after deploying to Shopify (version gift-thresh
 
 ## Summary
 
-Of the 31 original issues, 28 are fixed and 3 are still open. A further 8 bugs turned up on the live store after deploying: 7 are fixed and live, and 1 is only partly live until the server is redeployed. Three deployment steps remain before the App Store submission.
+Of the 35 issues, 33 are fixed and 2 are still open. A further 8 bugs turned up on the live store after deploying: 7 are fixed and live, and 1 is only partly live until the server is redeployed. Deployment steps D1–D3 remain before the App Store submission.
 
-- **Open from the review:** S5 (waiting on Shopify; gift history is off meanwhile), B1 (billing test), B2 (exact payment figures).
+- **Open from the review:** S5 (waiting on Shopify; the History page is hidden meanwhile) and B1 (billing test on a real store).
 - **After deploying:** P1–P8 below. P8's faster loading needs the server changes on Render.
-- **Deployment steps:** D1–D3 below. The server on Render doesn't have the 14 unpushed commits on `feat/subscription-billing`.
+- **Deployment steps:** D1–D3 below. Migration `20261027120000_trial_record_and_gift_discounts` runs on the next Render start.
 
 Statuses: Open, In progress, Waiting on Shopify, Needs check (needs a manual step or a live store), Done.
 
@@ -45,7 +45,11 @@ Sorted by severity.
 | O3 | No tests, lint or CI for the app | Ops | Medium | Done | Vitest unit and jsdom tests (21), ESLint, GitHub Actions CI |
 | S4 | CORS allows any origin | Security | Low | Done | CORS headers only outside production |
 | S6 | Access scopes need a least-privilege review | Compliance | Low | Done | Dropped write_products and write_app_proxy; four scopes remain, each explained in shopify.app.toml |
-| B2 | Payment statistics are estimates | Billing | Low | Open | Accepted for launch: page labels figures as estimates; exact data needs the Partner API |
+| B2 | Payment statistics are estimates | Billing | Low | Done | Estimated payments page removed; Billing shows real Shopify subscription history, and the Shopify invoice is the record of charges |
+| B6 | Reinstall after shop/redact grants a new free trial | Billing | High | Done | ShopTrial keeps the shop domain and trial start through shop/redact; the privacy policy says so |
+| B7 | Transferred development store loses access at once | Billing | Medium | Done | A shop that stops being a development store gets a full trial from the transfer |
+| S9 | Gift-code endpoint has no rate limit and never deletes expired codes | Security | Medium | Done | 120 codes per minute per shop; expired codes deleted with discountCodeBulkDelete a day after expiry |
+| S10 | History page is empty while orders/create is off | App Store | Medium | Done | Hidden behind GIFT_HISTORY_ENABLED (default false) until S5 is approved |
 | O4 | Leftover files in the repo | Ops | Low | Done | CSV, cart_drawer.html, vite.config.js, web/ and the checkout placeholder removed |
 | O5 | .env.example says SQLite, schema is PostgreSQL | Ops | Low | Done | .env.example shows a PostgreSQL URL and the billing vars |
 | O6 | Custom nav links instead of the App Bridge nav menu | App Store | Low | Done | Duplicate in-page nav removed; App Bridge NavMenu includes Billing |
@@ -69,8 +73,8 @@ Bugs seen on the test store after the first releases, newest last. The version c
 
 | ID | Step | Status | Notes |
 | --- | --- | --- | --- |
-| D1 | Push `feat/subscription-billing` so Render deploys the server | Open | Needed for the `/privacy` page, the config metafield (P8) and all server fixes since the first release |
-| D2 | Set `DIRECT_URL` and `SUPPORT_EMAIL` on Render | Open | Without `DIRECT_URL` the migration step at startup fails |
+| D1 | Push `feat/subscription-billing` and check Render deploys that branch | Open | `origin/main` is behind the branch; Render must build the branch with the billing fixes |
+| D2 | Set `DIRECT_URL`, `SUPPORT_EMAIL` and `GIFT_HISTORY_ENABLED=false` on Render; confirm `SHOPIFY_BILLING_TEST=false` | Open | Without `DIRECT_URL` the migration step at startup fails |
 | D3 | Partner Dashboard: manual pricing and an emergency developer contact | Open | Required before submitting the App Store listing (docs/app-store-listing.md) |
 
 ## Theme compatibility

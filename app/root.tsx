@@ -20,6 +20,7 @@ import polarisFr from "@shopify/polaris/locales/fr.json";
 import polarisIt from "@shopify/polaris/locales/it.json";
 import polarisNl from "@shopify/polaris/locales/nl.json";
 import type { Locale } from "~/i18n";
+import { isGiftHistoryEnabled } from "~/lib/features.server";
 import { localeCookie, resolveLocale } from "~/i18n/locale.server";
 import { I18nProvider, useI18n } from "~/i18n/react";
 
@@ -42,7 +43,11 @@ export const links: LinksFunction = () => [
 export function loader({ request }: LoaderFunctionArgs) {
   const cookie = localeCookie(request);
   return json(
-    { apiKey: process.env.SHOPIFY_API_KEY || "", locale: resolveLocale(request) },
+    {
+      apiKey: process.env.SHOPIFY_API_KEY || "",
+      locale: resolveLocale(request),
+      historyEnabled: isGiftHistoryEnabled(),
+    },
     cookie ? { headers: { "Set-Cookie": cookie } } : undefined,
   );
 }
@@ -70,25 +75,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Navigation() {
+function Navigation({ historyEnabled }: { historyEnabled: boolean }) {
   const { t } = useI18n();
   return (
     <NavMenu>
       <Link to="/" rel="home">{t("nav.dashboard")}</Link>
       <Link to="/app/tiers">{t("nav.tiers")}</Link>
       <Link to="/app/settings">{t("nav.settings")}</Link>
-      <Link to="/app/history">{t("nav.history")}</Link>
+      {historyEnabled && <Link to="/app/history">{t("nav.history")}</Link>}
       <Link to="/app/billing">{t("nav.billing")}</Link>
     </NavMenu>
   );
 }
 
 export default function App() {
-  const { apiKey, locale } = useLoaderData<typeof loader>();
+  const { apiKey, locale, historyEnabled } = useLoaderData<typeof loader>();
   return (
     <ShopifyAppProvider isEmbeddedApp apiKey={apiKey} i18n={POLARIS_TRANSLATIONS[locale] ?? polarisEn}>
       <I18nProvider locale={locale}>
-        <Navigation />
+        <Navigation historyEnabled={historyEnabled} />
         <Outlet />
       </I18nProvider>
     </ShopifyAppProvider>

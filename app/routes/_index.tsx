@@ -8,8 +8,10 @@ import {
   Grid,
 } from "@shopify/polaris";
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { Link as RemixLink } from "@remix-run/react";
+import { json } from "@remix-run/node";
+import { Link as RemixLink, useLoaderData } from "@remix-run/react";
 import { getBillingAccess } from "~/lib/billing.server";
+import { isGiftHistoryEnabled } from "~/lib/features.server";
 import { syncBilling } from "~/models/billing.server";
 import { useI18n } from "~/i18n/react";
 import { authenticate } from "~/shopify.server";
@@ -20,7 +22,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!getBillingAccess(billing).hasAccess) {
     throw redirect("/app/billing");
   }
-  return null;
+  return json({ historyEnabled: isGiftHistoryEnabled() });
 }
 
 const SECTIONS = [
@@ -33,6 +35,8 @@ const STEPS = ["dashboard.how1", "dashboard.how2", "dashboard.how3", "dashboard.
 
 export default function Index() {
   const { t } = useI18n();
+  const { historyEnabled } = useLoaderData<typeof loader>();
+  const sections = SECTIONS.filter((section) => historyEnabled || section.to !== "/app/history");
 
   return (
     <Page title={t("dashboard.title")} subtitle={t("dashboard.subtitle")}>
@@ -50,8 +54,8 @@ export default function Index() {
               </BlockStack>
             </Card>
 
-            <Grid columns={{ xs: 1, sm: 2, md: 3, lg: 3, xl: 3 }}>
-              {SECTIONS.map((section) => (
+            <Grid columns={{ xs: 1, sm: 2, md: sections.length, lg: sections.length, xl: sections.length }}>
+              {sections.map((section) => (
                 <Grid.Cell key={section.to}>
                   <Card>
                     <BlockStack gap="300">

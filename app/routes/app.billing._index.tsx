@@ -11,7 +11,7 @@ import {
   DataTable,
   List,
 } from "@shopify/polaris";
-import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import {
@@ -24,7 +24,7 @@ import {
 import { formatMoney } from "~/lib/tiers";
 import type { MessageKey } from "~/i18n";
 import { useI18n } from "~/i18n/react";
-import { getPaymentStats, getSubscriptions, syncBilling } from "~/models/billing.server";
+import { getSubscriptions, syncBilling } from "~/models/billing.server";
 import { authenticate } from "~/shopify.server";
 
 const isTestBilling = () => process.env.SHOPIFY_BILLING_TEST === "true";
@@ -34,10 +34,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const shopId = session.shop;
 
   const billing = await syncBilling(shopId, { force: true });
-  const [subscriptions, stats] = await Promise.all([
-    getSubscriptions(shopId),
-    getPaymentStats(shopId),
-  ]);
+  const subscriptions = await getSubscriptions(shopId);
 
   // Amounts stay in cents; the page formats them in the admin's language.
   return json({
@@ -60,10 +57,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       trialDays: sub.trialDays,
       date: sub.createdAt.toISOString().split("T")[0],
     })),
-    stats: {
-      totalPaid: stats.totalPaid,
-      paymentCount: stats.paymentCount,
-    },
   });
 }
 
@@ -117,7 +110,7 @@ const STATUS_TONE: Record<string, "success" | "attention" | "critical" | "info" 
 };
 
 export default function BillingPage() {
-  const { plan, access, currentPeriodEnd, subscriptions, stats } = useLoaderData<typeof loader>();
+  const { plan, access, currentPeriodEnd, subscriptions } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const { t, locale } = useI18n();
@@ -221,25 +214,6 @@ export default function BillingPage() {
                   )}
                 </InlineStack>
               </BlockStack>
-            </Card>
-
-            <Card>
-              <InlineStack align="space-between" blockAlign="center">
-                <BlockStack gap="100">
-                  <Text variant="headingMd" as="h2">
-                    {t("billing.paymentsTitle")}
-                  </Text>
-                  <Text as="p" tone="subdued">
-                    {t("billing.paymentsSummary", {
-                      count: stats.paymentCount,
-                      total: formatMoney(stats.totalPaid, plan.currency, locale),
-                    })}
-                  </Text>
-                </BlockStack>
-                <Link to="/app/billing/payments">
-                  <Button>{t("billing.viewPayments")}</Button>
-                </Link>
-              </InlineStack>
             </Card>
 
             <Card>

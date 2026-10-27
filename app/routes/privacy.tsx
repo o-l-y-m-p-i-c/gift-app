@@ -68,8 +68,9 @@ export default function PrivacyPolicy() {
         When a merchant uninstalls the app, Shopify revokes the app&apos;s access and the app
         deletes its access tokens. Shopify sends a shop data erasure request 48 hours later, and
         the app then deletes all of the shop&apos;s tiers, settings, gift history and billing
-        records. Customer data erasure requests remove any gift history linked to that
-        customer&apos;s orders.
+        records. Only the shop&apos;s myshopify.com domain and free-trial start date are kept, so
+        that reinstalling the app doesn&apos;t start a second free trial. Customer data erasure
+        requests remove any gift history linked to that customer&apos;s orders.
       </p>
 
       <h2>Contact</h2>
