@@ -22,6 +22,8 @@ services:
         sync: false
       - key: SHOPIFY_APP_URL
         sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
       - key: SCOPES
         value: read_products,read_discounts,write_discounts,read_orders
       - key: BILLING_PLAN_NAME

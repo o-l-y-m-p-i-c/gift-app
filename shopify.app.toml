@@ -3,20 +3,21 @@
 # Replace the placeholders below with your new app's values, or run
 # `shopify app config link` to have the CLI fill them in from the Partner Dashboard.
 
-client_id = "YOUR_CLIENT_ID"
+client_id = "2bab968b42805a5ad65339e380143fcd"
 name = "Gift Threshold"
-application_url = "https://YOUR_APP_HOST"
+application_url = "https://gift-app-ux53.onrender.com"
 embedded = true
 
 [build]
-include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-07"
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/orders-create"
-  topics = [ "orders/create" ]
+  # Disabled until protected customer data access is approved in the Partner
+  # Dashboard; deploys fail while it's subscribed. Uncomment to record gift history.
+  # [[webhooks.subscriptions]]
+  # uri = "/webhooks/orders-create"
+  # topics = [ "orders/create" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/app-uninstalled"
@@ -42,12 +43,12 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://YOUR_APP_HOST/auth/callback" ]
+redirect_urls = [ "https://gift-app-ux53.onrender.com/auth/callback" ]
 
 [pos]
 embedded = false
 
 [app_proxy]
-url = "https://YOUR_APP_HOST/api"
+url = "https://gift-app-ux53.onrender.com/api"
 prefix = "apps"
 subpath = "gift-threshold"
