@@ -51,8 +51,11 @@
   --gift-progress-fill: var(--gift-custom-progress, linear-gradient(90deg, #4caf50, #66bb6a));
   --gift-btn-bg: var(--gift-accent, #1c1c1c);
   --gift-btn-text: var(--gift-accent-text, #ffffff);
+  /* Buttons use --gift-radius; the widget box, dialog and gift cards use the
+     separate container radius. */
   --gift-radius: var(--gift-corner-radius, 12px);
-  --gift-radius-sm: calc(var(--gift-corner-radius, 12px) * 0.625);
+  --gift-container-radius: var(--gift-custom-container-radius, var(--gift-radius));
+  --gift-radius-sm: calc(var(--gift-container-radius) * 0.625);
   --gift-font: inherit;
   --gift-heading-font: inherit;
   --gift-heading-weight: 600;
@@ -85,7 +88,7 @@
   margin: var(--gift-spacing) auto;
   padding: var(--gift-padding);
   border: var(--gift-border-width) solid var(--gift-border);
-  border-radius: var(--gift-radius);
+  border-radius: var(--gift-container-radius);
   background: var(--gift-bg);
   font-family: var(--gift-font);
   color: var(--gift-text);
@@ -343,7 +346,7 @@
   padding: calc(var(--gift-unit) * 1.5);
   background: var(--gift-bg-solid);
   color: var(--gift-text);
-  border-radius: var(--gift-radius);
+  border-radius: var(--gift-container-radius);
   box-shadow: 0 calc(var(--gift-unit) * 1.25) calc(var(--gift-unit) * 4) rgb(0 0 0 / 0.22);
   text-align: center;
 }

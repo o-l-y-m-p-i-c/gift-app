@@ -27,13 +27,14 @@
   --gift-accent: {{ block.settings.accent_color | default: '#1c1c1c' }};
   --gift-accent-text: {{ block.settings.accent_text_color | default: '#ffffff' }};
   --gift-corner-radius: {{ block.settings.corner_radius | default: 12 }}px;
+  --gift-custom-container-radius: {{ block.settings.container_radius | default: 12 }}px;
   --gift-custom-border-width: {{ block.settings.border_width | default: 1 }}px;
   --gift-padding-scale: {{ block.settings.padding | default: '1.25' }};
   --gift-custom-spacing: {{ block.settings.spacing | default: 16 }}px;
   --gift-title-scale: {{ block.settings.title_size | default: '0.9375' }};
   --gift-custom-title-transform: {% if block.settings.title_uppercase == false %}none{% else %}uppercase{% endif %};
   {%- if block.settings.background_color != blank %} --gift-custom-bg: {{ block.settings.background_color }};{% endif -%}
-  {%- if block.settings.border_color != blank %} --gift-custom-border: {{ block.settings.border_color }};{% endif -%}
+  {%- if block.settings.border_transparent %} --gift-custom-border: transparent;{% elsif block.settings.border_color != blank %} --gift-custom-border: {{ block.settings.border_color }};{% endif -%}
   {%- if block.settings.card_background_color != blank %} --gift-surface: {{ block.settings.card_background_color }};{% endif -%}
   {%- if block.settings.progress_color != blank %} --gift-custom-progress: {{ block.settings.progress_color }};{% endif -%}
   {%- if block.settings.highlight_color != blank %} --gift-custom-highlight: {{ block.settings.highlight_color }};{% endif -%}
@@ -236,9 +237,19 @@
     {
       "type": "range",
       "id": "corner_radius",
-      "label": "Corner radius",
+      "label": "Button corner radius",
       "min": 0,
       "max": 24,
+      "step": 1,
+      "unit": "px",
+      "default": 12
+    },
+    {
+      "type": "range",
+      "id": "container_radius",
+      "label": "Container corner radius",
+      "min": 0,
+      "max": 32,
       "step": 1,
       "unit": "px",
       "default": 12
@@ -258,6 +269,13 @@
       "type": "color",
       "id": "border_color",
       "label": "Border"
+    },
+    {
+      "type": "checkbox",
+      "id": "border_transparent",
+      "label": "Transparent border",
+      "default": false,
+      "info": "Keeps the border's space but hides its color."
     },
     {
       "type": "color",
