@@ -1068,6 +1068,23 @@
   padding-bottom: calc(var(--gift-unit) * 0.5);
 }
 
+/* The loading widget is a centered column; the scale placeholder and the
+   card row must still span its full width (cards start on the left, like
+   the loaded widget), and the row is clipped rather than spilling out of
+   the box on narrow screens. */
+.gift-widget--loading > .gift-widget__loading-scale,
+.gift-widget--loading > .gift-widget__carousel--loading {
+  align-self: stretch;
+  min-width: 0;
+}
+
+.gift-widget__card--skeleton .gift-widget__info {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .gift-widget__card--skeleton {
   flex: 0 0 calc(var(--gift-unit) * 10);
   display: flex;
