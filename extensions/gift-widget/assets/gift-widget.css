@@ -71,6 +71,8 @@
 /* ─── Cart page widget ─────────────────────────────────────── */
 
 .gift-widget {
+  box-sizing: border-box;
+  width: 100%;
   margin: var(--gift-unit) auto;
   padding: calc(var(--gift-unit) * 1.25);
   border: 1px solid var(--gift-border);
@@ -277,6 +279,11 @@
 
 .gift-widget-container {
   position: relative;
+  /* Fill the section even when the theme lays blocks out in a centered
+     flex column, which would otherwise shrink the widget to its content. */
+  box-sizing: border-box;
+  width: 100%;
+  align-self: stretch;
 }
 
 .gift-widget-container.gift-widget-container--loading {
