@@ -39,7 +39,8 @@ api_version = "2026-07"
 # write_discounts — create the single-use gift discount codes
 # read_orders     — record gift history from orders/create
 # read_metaobjects, write_metaobjects — store gift tiers in the $app:gift_tier metaobject
-scopes = "read_products,read_discounts,write_discounts,read_orders,read_metaobjects,write_metaobjects"
+# read_metaobject_definitions, write_metaobject_definitions — install the gift_tier definition
+scopes = "read_products,read_discounts,write_discounts,read_orders,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
