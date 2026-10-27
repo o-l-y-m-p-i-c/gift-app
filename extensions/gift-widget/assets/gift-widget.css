@@ -21,6 +21,14 @@
   --gift-unit: max(13px, 1em);
 }
 
+/* Many themes hide empty divs (div:empty { display: none }). The scale dots,
+   progress fill and skeleton lines are empty by design, so show them again
+   with a more specific selector. */
+[data-gift-app] div:empty,
+[data-gift-drawer-mounted] div:empty {
+  display: block;
+}
+
 .gift-widget,
 .gift-drawer-widget,
 .add-as-gift,
@@ -464,7 +472,7 @@
   position: relative;
   width: fit-content;
   margin-inline: auto;
-  padding: var(--gift-unit) 0 calc(var(--gift-unit) * 1.75);
+  padding: calc(var(--gift-unit) * 1.25) 0 calc(var(--gift-unit) * 1.5);
 }
 
 .gift-widget__scale-steps {
@@ -474,12 +482,13 @@
 
 .gift-widget__scale-line {
   position: absolute;
-  top: calc(var(--gift-unit) * 0.25);
+  /* Centered on the dots: (dot size - line height) / 2 */
+  top: calc(var(--gift-unit) * 0.375);
   left: 0;
   width: 100%;
-  height: calc(var(--gift-unit) * 0.375);
-  background: color-mix(in srgb, var(--gift-text) 8%, transparent);
-  border-radius: var(--gift-radius);
+  height: calc(var(--gift-unit) * 0.5);
+  background: color-mix(in srgb, var(--gift-text) 10%, transparent);
+  border-radius: 999px;
   z-index: 0;
 }
 
@@ -489,26 +498,27 @@
   left: 0;
   height: 100%;
   background: linear-gradient(90deg, #4caf50, #66bb6a);
-  border-radius: var(--gift-radius);
+  border-radius: 999px;
   transition: width 0.4s ease;
 }
 
 .gift-widget__scale-step {
-  flex: 0 0 96px;
+  flex: 0 0 116px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: calc(var(--gift-unit) * 0.375);
+  gap: calc(var(--gift-unit) * 0.5);
 }
 
 .gift-widget__scale-dot {
-  width: calc(var(--gift-unit) * 0.75);
-  height: calc(var(--gift-unit) * 0.75);
-  background: color-mix(in srgb, var(--gift-text) 15%, transparent);
-  border: 2px solid var(--gift-surface, transparent);
+  width: calc(var(--gift-unit) * 1.25);
+  height: calc(var(--gift-unit) * 1.25);
+  background: color-mix(in srgb, var(--gift-text) 18%, transparent);
+  border: 3px solid var(--gift-surface, #ffffff);
   border-radius: 50%;
+  box-sizing: border-box;
   z-index: 1;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, background 0.3s ease;
 }
 
 .gift-widget__scale-step--unlocked .gift-widget__scale-dot {
@@ -517,30 +527,36 @@
 
 .gift-widget__scale-step--current .gift-widget__scale-dot {
   background: var(--gift-btn-bg);
-  width: var(--gift-unit);
-  height: var(--gift-unit);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--gift-btn-bg) 12%, transparent);
+  /* Scaled rather than resized so the labels stay aligned */
+  transform: scale(1.35);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--gift-btn-bg) 15%, transparent);
 }
 
 .gift-widget__scale-amount {
-  font-size: var(--gift-text-xs);
+  font-size: var(--gift-text-base);
+  font-weight: 500;
   color: var(--gift-text-muted);
   white-space: nowrap;
   font-family: var(--gift-heading-font);
-  line-height: 1;
+  line-height: 1.1;
 }
 
 .gift-widget__scale-bonus {
-  font-size: calc(var(--gift-unit) * 0.6875);
+  font-size: var(--gift-text-xs);
   color: var(--gift-text-faint);
   white-space: nowrap;
   font-family: var(--gift-font);
-  line-height: 1;
+  line-height: 1.1;
+}
+
+.gift-widget__scale-step--unlocked .gift-widget__scale-amount {
+  color: var(--gift-text);
 }
 
 .gift-widget__scale-step--current .gift-widget__scale-amount {
   color: var(--gift-text);
-  font-weight: 600;
+  font-size: var(--gift-text-lg);
+  font-weight: 700;
 }
 
 .gift-widget__scale-step--current .gift-widget__scale-bonus {

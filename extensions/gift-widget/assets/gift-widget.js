@@ -351,7 +351,7 @@
     const giftItems = G.getGiftSelections(cart);
     const remainingBudget = state.remainingBudget;
     const allTiers = G.getTiers();
-    const STEP_WIDTH = 96; // px per tier column
+    const STEP_WIDTH = 116; // px per tier column (matches .gift-widget__scale-step)
 
     if (allTiers.length === 0) {
       setAllContainersHtml("");
@@ -421,7 +421,6 @@
       setAllContainersHtml(`
         <div class="gift-widget">
           <p class="gift-widget__promo-title">${esc(t("promo_title"))}</p>
-          <p class="gift-widget__subtitle">${esc(t("budget_label", { amount: G.formatPrice(activeTier.giftAmount) }))}</p>
           ${progressHtml}
           ${selectedHtml}
           <h2 class="gift-widget__budget-full-title gift-widget__budget-full-title--success">
