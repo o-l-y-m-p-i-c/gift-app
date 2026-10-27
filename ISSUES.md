@@ -1,16 +1,16 @@
 # Gift App — Issues Before Public Release
 
-Oct 27, 2026 · @Nick · updated after the fixes on the same day
+Oct 27, 2026 · @Nick · updated after deploying to Shopify (version gift-threshold-11)
 
 ## Summary
 
-27 of 31 issues are resolved in code. Two need a step outside the code before launch: protected customer data approval (S5) and a billing test on a development store (B1). Two remain open by choice: admin translations (B4) and exact payment figures (B2).
+Of the 31 original issues, 27 are fixed and 4 are still open. A further 8 bugs turned up on the live store after deploying: 7 are fixed and live, and 1 is only partly live until the server is redeployed. Three deployment steps remain before the App Store submission.
 
-- **Critical (5):** all resolved, including S7 found while fixing the others.
-- **High (13), Medium (7), Low (6).**
-- **Scope:** the Remix app, Prisma schema, the theme app extension and deploy config.
+- **Open from the review:** S5 (waiting on Shopify; gift history is off meanwhile), B1 (billing test), B4 (admin translations), B2 (exact payment figures).
+- **After deploying:** P1–P8 below. P8's faster loading needs the server changes on Render.
+- **Deployment steps:** D1–D3 below. The server on Render doesn't have the 14 unpushed commits on `feat/subscription-billing`.
 
-Statuses: Open, In progress, Needs check (needs a manual step or a live store), Done. The sections below keep the original problem descriptions.
+Statuses: Open, In progress, Waiting on Shopify, Needs check (needs a manual step or a live store), Done.
 
 ## Issue tracker
 
@@ -28,7 +28,7 @@ Sorted by severity.
 | T6 | CSS depends on Prestige CSS variables | Theme | High | Done | Colors derive from currentColor with color-mix; button color, text color and radius are block settings |
 | T7 | Drawer embed only finds a cart-drawer element | Theme | High | Done | Drawer selector and position settings, plus detection for common drawer markup |
 | T9 | Gift catalogue loaded by paging /products.json | Theme | High | Done | /products.json fallbacks removed; server caches the eligible catalogue per shop for 5 minutes |
-| S5 | orders/create needs protected customer data approval | Compliance | High | Needs check | Request protected customer data (Level 1) in the Partner Dashboard; documented in README |
+| S5 | orders/create needs protected customer data approval | Compliance | High | Waiting on Shopify | Requested in the Partner Dashboard but not approved at deploy time. The orders/create webhook is commented out in shopify.app.toml so deploys succeed, so gift history doesn't record new orders. Uncomment it and deploy once approved |
 | B1 | Billing untested on a real store | Billing | High | Needs check | Test subscribe, cancel and trial expiry on a development store |
 | B3 | Davines branding and presets in a public app | App Store | High | Done | Generic name and copy; sample tiers replace the Davines preset; client placeholders in shopify.app.toml |
 | B5 | Checkout UI extension is an empty placeholder | App Store | High | Done | Empty checkout extension removed |
@@ -49,6 +49,29 @@ Sorted by severity.
 | O4 | Leftover files in the repo | Ops | Low | Done | CSV, cart_drawer.html, vite.config.js, web/ and the checkout placeholder removed |
 | O5 | .env.example says SQLite, schema is PostgreSQL | Ops | Low | Done | .env.example shows a PostgreSQL URL and the billing vars |
 | O6 | Custom nav links instead of the App Bridge nav menu | App Store | Low | Done | Duplicate in-page nav removed; App Bridge NavMenu includes Billing |
+
+## Found after deploying
+
+Bugs seen on the test store after the first releases, newest last. The version column is the Shopify app version that fixed it.
+
+| ID | Bug | Cause | Severity | Status | Fixed in |
+| --- | --- | --- | --- | --- | --- |
+| P1 | Widget text, dots and images were tiny | Sizes used `rem`, and the theme shrinks the root font size; sizes now follow the section's text size | High | Done | gift-threshold-3 |
+| P2 | Footnote showed "isn&amp;#39;t" | Liquid's `t` filter already escapes text and the widget escaped it again; text is decoded once first | Low | Done | gift-threshold-3 |
+| P3 | Block attributes printed as text below the footer | Shopify wraps app snippet output in HTML comments, which closed the tag early; attributes are now written in each block | High | Done | gift-threshold-5 |
+| P4 | Choosing a gift reloaded the whole cart page | `GET /cart?sections=` returns cart JSON on the cart page, so the reload fallback ran; sections now come from `/cart/update.js` | Medium | Done | gift-threshold-6 |
+| P5 | Scale dots, progress fill and loading skeleton invisible | The theme hides empty divs (`div:empty { display: none }`); a more specific rule shows them | Medium | Done | gift-threshold-7 |
+| P6 | Loading skeleton collapsed and spilled out of the box | The skeleton's centered column gave its placeholders zero width | Low | Done | gift-threshold-8 |
+| P7 | Widget stayed narrow and centered | The theme's section centers blocks in a flex column; the widget now stretches to full width | Low | Done | gift-threshold-9 |
+| P8 | Widget hidden for about 5 seconds, then pushed the page down | It waited for four requests before showing. A sized skeleton now shows at once (live); tiers and settings come from an app metafield instead of the app proxy (needs D1) | Medium | In progress | gift-threshold-5 (skeleton) |
+
+## Deployment steps
+
+| ID | Step | Status | Notes |
+| --- | --- | --- | --- |
+| D1 | Push `feat/subscription-billing` so Render deploys the server | Open | Needed for the `/privacy` page, the config metafield (P8) and all server fixes since the first release |
+| D2 | Set `DIRECT_URL` and `SUPPORT_EMAIL` on Render | Open | Without `DIRECT_URL` the migration step at startup fails |
+| D3 | Partner Dashboard: manual pricing and an emergency developer contact | Open | Required before submitting the App Store listing (docs/app-store-listing.md) |
 
 ## Theme compatibility
 
