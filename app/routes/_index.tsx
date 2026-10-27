@@ -11,6 +11,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Link as RemixLink } from "@remix-run/react";
 import { getBillingAccess } from "~/lib/billing.server";
 import { syncBilling } from "~/models/billing.server";
+import { useI18n } from "~/i18n/react";
 import { authenticate } from "~/shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -22,99 +23,64 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return null;
 }
 
+const SECTIONS = [
+  { title: "dashboard.tiersTitle", body: "dashboard.tiersBody", button: "dashboard.tiersButton", to: "/app/tiers" },
+  { title: "dashboard.settingsTitle", body: "dashboard.settingsBody", button: "dashboard.settingsButton", to: "/app/settings" },
+  { title: "dashboard.historyTitle", body: "dashboard.historyBody", button: "dashboard.historyButton", to: "/app/history" },
+] as const;
+
+const STEPS = ["dashboard.how1", "dashboard.how2", "dashboard.how3", "dashboard.how4", "dashboard.how5"] as const;
+
 export default function Index() {
+  const { t } = useI18n();
+
   return (
-    <Page title="Gift Threshold App" subtitle="Give free gifts when customers reach cart thresholds">
+    <Page title={t("dashboard.title")} subtitle={t("dashboard.subtitle")}>
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
             <Card>
               <BlockStack gap="300">
                 <Text variant="headingMd" as="h2">
-                  Welcome! 🎁
+                  {t("dashboard.welcomeTitle")}
                 </Text>
                 <Text as="p" tone="subdued">
-                  This app lets you offer free gifts to customers when their cart
-                  total reaches configured thresholds. The gift price is calculated
-                  as a percentage of the threshold amount.
+                  {t("dashboard.welcomeBody")}
                 </Text>
               </BlockStack>
             </Card>
 
             <Grid columns={{ xs: 1, sm: 2, md: 3, lg: 3, xl: 3 }}>
-              <Grid.Cell>
-                <Card>
-                  <BlockStack gap="300">
-                    <Text variant="headingMd" as="h3">
-                      Gift Tiers
-                    </Text>
-                    <Text as="p" tone="subdued">
-                      Configure threshold amounts and gift percentages. Start from
-                      the sample tiers or create your own.
-                    </Text>
-                    <RemixLink to="/app/tiers">
-                      <Button fullWidth>Manage Tiers</Button>
-                    </RemixLink>
-                  </BlockStack>
-                </Card>
-              </Grid.Cell>
-
-              <Grid.Cell>
-                <Card>
-                  <BlockStack gap="300">
-                    <Text variant="headingMd" as="h3">
-                      Settings
-                    </Text>
-                    <Text as="p" tone="subdued">
-                      Configure threshold calculation (before/after promo codes)
-                      and notification preferences.
-                    </Text>
-                    <RemixLink to="/app/settings">
-                      <Button fullWidth>Configure Settings</Button>
-                    </RemixLink>
-                  </BlockStack>
-                </Card>
-              </Grid.Cell>
-
-              <Grid.Cell>
-                <Card>
-                  <BlockStack gap="300">
-                    <Text variant="headingMd" as="h3">
-                      History
-                    </Text>
-                    <Text as="p" tone="subdued">
-                      View all gifts given to customers, including order details
-                      and gift values.
-                    </Text>
-                    <RemixLink to="/app/history">
-                      <Button fullWidth>View History</Button>
-                    </RemixLink>
-                  </BlockStack>
-                </Card>
-              </Grid.Cell>
+              {SECTIONS.map((section) => (
+                <Grid.Cell key={section.to}>
+                  <Card>
+                    <BlockStack gap="300">
+                      <Text variant="headingMd" as="h3">
+                        {t(section.title)}
+                      </Text>
+                      <Text as="p" tone="subdued">
+                        {t(section.body)}
+                      </Text>
+                      <RemixLink to={section.to}>
+                        <Button fullWidth>{t(section.button)}</Button>
+                      </RemixLink>
+                    </BlockStack>
+                  </Card>
+                </Grid.Cell>
+              ))}
             </Grid>
 
             <Card>
               <BlockStack gap="300">
                 <Text variant="headingMd" as="h2">
-                  How It Works
+                  {t("dashboard.howTitle")}
                 </Text>
                 <BlockStack gap="200">
-                  <Text as="p">
-                    1. Customer adds products to cart
-                  </Text>
-                  <Text as="p">
-                    2. When cart total reaches a threshold, a gift widget appears
-                  </Text>
-                  <Text as="p">
-                    3. Customer selects a free gift (price ≤ calculated max)
-                  </Text>
-                  <Text as="p">
-                    4. Gift is added to cart and made free with a single-use discount code
-                  </Text>
-                  <Text as="p">
-                    5. If promo code drops total below threshold, gift is auto-removed
-                  </Text>
+                  {STEPS.map((step) => (
+                    <Text as="p" key={step}>
+                      {t(step)}
+                    </Text>
+                  ))}
                 </BlockStack>
               </BlockStack>
             </Card>

@@ -25,6 +25,8 @@ import {
 import { getSettings } from "~/models/settings.server";
 import { syncStorefrontConfig } from "~/models/storefront-config.server";
 import { SAMPLE_TIERS, calculateGiftAmount, formatMoney } from "~/lib/tiers";
+import type { MessageKey } from "~/i18n";
+import { useI18n } from "~/i18n/react";
 
 import { authenticate } from "~/shopify.server";
 
@@ -33,37 +35,40 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const shopId = session.shop;
 
   const [tiers, settings] = await Promise.all([getTiers(shopId), getSettings(shopId)]);
-  const currencyCode = settings.currencyCode;
 
   return json({
     tiers: tiers.map((t) => ({
       id: t.id,
       minAmount: t.minAmount,
-      minAmountLabel: formatMoney(t.minAmount, currencyCode),
       giftPercent: t.giftPercent,
       giftAmount: t.giftAmount,
-      giftAmountLabel: formatMoney(t.giftAmount, currencyCode),
       active: t.active,
     })),
-    currencyCode,
+    currencyCode: settings.currencyCode,
   });
 }
+
+/** Messages are returned as keys and translated in the browser. */
+type ActionResult = {
+  success: boolean;
+  messageKey?: MessageKey;
+  values?: Record<string, number>;
+  error?: string;
+};
 
 export async function action({ request }: ActionFunctionArgs) {
   const { session } = await authenticate.admin(request);
   const shopId = session.shop;
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+  const result = (data: ActionResult, status = 200) => json(data, { status });
 
   try {
     if (intent === "create") {
       const minAmount = Math.round(parseFloat(formData.get("minAmount") as string) * 100);
       const giftPercent = parseFloat(formData.get("giftPercent") as string);
       if (!Number.isFinite(minAmount) || minAmount <= 0 || !Number.isFinite(giftPercent) || giftPercent <= 0 || giftPercent > 100) {
-        return json(
-          { success: false, message: "Enter a positive minimum amount and a percentage between 0 and 100." },
-          { status: 400 },
-        );
+        return result({ success: false, messageKey: "tiers.msgInvalid" }, 400);
       }
       const giftAmount = calculateGiftAmount(minAmount, giftPercent);
 
@@ -76,7 +81,7 @@ export async function action({ request }: ActionFunctionArgs) {
       });
 
       await syncStorefrontConfig(shopId);
-      return json({ success: true, message: "Tier created" });
+      return result({ success: true, messageKey: "tiers.msgCreated" });
     }
 
     if (intent === "update") {
@@ -86,28 +91,25 @@ export async function action({ request }: ActionFunctionArgs) {
       await updateTier(id, shopId, { active });
 
       await syncStorefrontConfig(shopId);
-      return json({ success: true, message: "Tier updated" });
+      return result({ success: true, messageKey: "tiers.msgUpdated" });
     }
 
     if (intent === "delete") {
       const id = parseInt(formData.get("id") as string);
       await deleteTier(id, shopId);
       await syncStorefrontConfig(shopId);
-      return json({ success: true, message: "Tier deleted" });
+      return result({ success: true, messageKey: "tiers.msgDeleted" });
     }
 
     if (intent === "import-sample") {
       const count = await importSampleTiers(shopId);
       await syncStorefrontConfig(shopId);
-      return json({ success: true, message: `Loaded ${count} sample tiers` });
+      return result({ success: true, messageKey: "tiers.msgSampleLoaded", values: { count } });
     }
 
-    return json({ success: false, message: "Unknown intent" }, { status: 400 });
+    return result({ success: false, messageKey: "common.unknownAction" }, 400);
   } catch (error) {
-    return json(
-      { success: false, message: (error as Error).message },
-      { status: 500 },
-    );
+    return result({ success: false, error: (error as Error).message }, 500);
   }
 }
 
@@ -115,6 +117,8 @@ export default function TiersPage() {
   const { tiers, currencyCode } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
+  const { t, locale } = useI18n();
+  const money = (cents: number) => formatMoney(cents, currencyCode, locale);
 
   const [showCreate, setShowCreate] = useState(false);
   const [newMinAmount, setNewMinAmount] = useState("");
@@ -128,27 +132,29 @@ export default function TiersPage() {
     submit(formData, { method: "post" });
   };
 
-  const rows = tiers.map((t) => [
-    t.minAmountLabel,
-    `${t.giftPercent.toFixed(1)}%`,
-    t.giftAmountLabel,
+  const rows = tiers.map((tier) => [
+    money(tier.minAmount),
+    `${tier.giftPercent.toFixed(1)}%`,
+    money(tier.giftAmount),
     <Checkbox
-      label={t.active ? "Active" : "Inactive"}
+      key={`active-${tier.id}`}
+      label={tier.active ? t("tiers.active") : t("tiers.inactive")}
       labelHidden
-      checked={t.active}
-      onChange={(checked) => handleTierActiveChange(t.id, checked)}
+      checked={tier.active}
+      onChange={(checked) => handleTierActiveChange(tier.id, checked)}
     />,
     <Button
+      key={`delete-${tier.id}`}
       size="slim"
       onClick={() => {
         const formData = new FormData();
         formData.append("intent", "delete");
-        formData.append("id", String(t.id));
-            submit(formData, { method: "post" });
+        formData.append("id", String(tier.id));
+        submit(formData, { method: "post" });
       }}
       tone="critical"
     >
-      Delete
+      {t("tiers.delete")}
     </Button>,
   ]);
 
@@ -169,15 +175,19 @@ export default function TiersPage() {
     submit(formData, { method: "post" });
   };
 
+  const actionMessage = actionData?.messageKey
+    ? t(actionData.messageKey, actionData.values)
+    : actionData?.error;
+
   return (
-    <Page title="Gift Tiers" subtitle="Configure threshold amounts and gift percentages">
+    <Page title={t("tiers.title")} subtitle={t("tiers.subtitle")}>
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
-            {actionData && (
+            {actionMessage && (
               <Card>
-                <Text as="p" tone={actionData.success ? "success" : "critical"}>
-                  {actionData.message}
+                <Text as="p" tone={actionData?.success ? "success" : "critical"}>
+                  {actionMessage}
                 </Text>
               </Card>
             )}
@@ -186,7 +196,7 @@ export default function TiersPage() {
               <BlockStack gap="400">
                 <Box paddingBlock="200">
                   <Text variant="headingMd" as="h2">
-                    Threshold Tiers ({tiers.length})
+                    {t("tiers.listTitle", { count: tiers.length })}
                   </Text>
                 </Box>
 
@@ -194,10 +204,10 @@ export default function TiersPage() {
                   <Box paddingBlock="400">
                     <BlockStack gap="300" align="center">
                       <Text as="p" tone="subdued">
-                        No tiers configured yet. Load the sample tiers or create your own.
+                        {t("tiers.empty")}
                       </Text>
                       <Button variant="primary" onClick={handleImportSample}>
-                        {`Load sample tiers (${SAMPLE_TIERS.length})`}
+                        {t("tiers.loadSample", { count: SAMPLE_TIERS.length })}
                       </Button>
                     </BlockStack>
                   </Box>
@@ -205,11 +215,17 @@ export default function TiersPage() {
                   <>
                     <DataTable
                       columnContentTypes={["text", "text", "text", "text", "numeric"]}
-                      headings={["Min Amount", "Gift %", "Max Gift Price", "Status", ""]}
+                      headings={[
+                        t("tiers.colMinAmount"),
+                        t("tiers.colPercent"),
+                        t("tiers.colGiftAmount"),
+                        t("tiers.colStatus"),
+                        "",
+                      ]}
                       rows={rows}
                     />
                     <Button onClick={handleImportSample}>
-                      Replace with sample tiers
+                      {t("tiers.replaceSample")}
                     </Button>
                   </>
                 )}
@@ -222,14 +238,14 @@ export default function TiersPage() {
           <Card>
             <BlockStack gap="400">
               <Text variant="headingMd" as="h2">
-                Add Tier
+                {t("tiers.addTitle")}
               </Text>
               <Button variant="primary" fullWidth onClick={() => setShowCreate(true)}>
-                Create Custom Tier
+                {t("tiers.createButton")}
               </Button>
               <Box paddingBlock="200">
                 <Text as="p" tone="subdued">
-                  Formula: gift = round(minAmount × percent / 100)
+                  {t("tiers.formula")}
                 </Text>
               </Box>
             </BlockStack>
@@ -240,47 +256,47 @@ export default function TiersPage() {
       <Modal
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        title="Create Gift Tier"
+        title={t("tiers.modalTitle")}
         primaryAction={{
-          content: "Create",
+          content: t("tiers.create"),
           onAction: handleCreate,
         }}
-        secondaryActions={[{ content: "Cancel", onAction: () => setShowCreate(false) }]}
+        secondaryActions={[{ content: t("tiers.cancel"), onAction: () => setShowCreate(false) }]}
       >
         <Modal.Section>
           <BlockStack gap="400">
             <TextField
-              label={`Minimum amount (${currencyCode})`}
+              label={t("tiers.minAmountLabel", { currency: currencyCode })}
               type="number"
               value={newMinAmount}
               onChange={setNewMinAmount}
               autoComplete="off"
-              placeholder="e.g., 100"
-              helpText="Cart total threshold in your shop currency"
+              placeholder={t("tiers.minAmountPlaceholder")}
+              helpText={t("tiers.minAmountHelp")}
             />
             <TextField
-              label="Gift Percentage"
+              label={t("tiers.percentLabel")}
               type="number"
               value={newPercent}
               onChange={setNewPercent}
               autoComplete="off"
-              placeholder="e.g., 9.0"
-              helpText="Percentage of threshold for max gift price"
+              placeholder={t("tiers.percentPlaceholder")}
+              helpText={t("tiers.percentHelp")}
               suffix="%"
             />
             {newMinAmount && newPercent && (
               <Box padding="300" background="bg-surface-secondary" borderRadius="200">
                 <BlockStack gap="200">
-                  <Text as="p" tone="subdued">Preview:</Text>
+                  <Text as="p" tone="subdued">{t("tiers.preview")}</Text>
                   <Text as="p">
-                    Max gift price:{" "}
-                    {formatMoney(
-                      calculateGiftAmount(
-                        Math.round(parseFloat(newMinAmount) * 100),
-                        parseFloat(newPercent),
+                    {t("tiers.previewAmount", {
+                      amount: money(
+                        calculateGiftAmount(
+                          Math.round(parseFloat(newMinAmount) * 100),
+                          parseFloat(newPercent),
+                        ),
                       ),
-                      currencyCode,
-                    )}
+                    })}
                   </Text>
                 </BlockStack>
               </Box>

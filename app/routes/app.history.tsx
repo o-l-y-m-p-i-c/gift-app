@@ -14,6 +14,7 @@ import { json } from "@remix-run/node";
 import { getHistory, getStats } from "~/models/history.server";
 import { getSettings } from "~/models/settings.server";
 import { formatMoney } from "~/lib/tiers";
+import { useI18n } from "~/i18n/react";
 import { authenticate } from "~/shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -25,94 +26,88 @@ export async function loader({ request }: LoaderFunctionArgs) {
     getStats(shopId),
     getSettings(shopId),
   ]);
-  const money = (cents: number) => formatMoney(cents, settings.currencyCode);
 
+  // Amounts stay in cents; the page formats them in the admin's language.
   return json({
     history: history.map((h) => ({
       id: h.id,
       orderId: h.orderId,
-      orderUrl: `https://admin.shopify.com/store/${shopId.replace(".myshopify.com", "")}/orders/${encodeURIComponent(h.orderId)}`, 
+      orderUrl: `https://admin.shopify.com/store/${shopId.replace(".myshopify.com", "")}/orders/${encodeURIComponent(h.orderId)}`,
       giftProductTitle: h.giftProductTitle,
-      giftProductPrice: money(h.giftProductPrice),
-      cartTotal: money(h.cartTotal),
-      thresholdBase: money(h.thresholdBase),
+      giftProductPrice: h.giftProductPrice,
+      cartTotal: h.cartTotal,
+      thresholdBase: h.thresholdBase,
       date: h.createdAt.toISOString().split("T")[0],
     })),
     stats: {
       totalGifts: stats.totalGifts,
-      totalValue: money(stats.totalValue),
-      averageValue: money(stats.totalGifts > 0 ? Math.round(stats.totalValue / stats.totalGifts) : 0),
+      totalValue: stats.totalValue,
+      averageValue: stats.totalGifts > 0 ? Math.round(stats.totalValue / stats.totalGifts) : 0,
     },
-    shopId,
+    currencyCode: settings.currencyCode,
   });
 }
 
 export default function HistoryPage() {
-  const { history, stats } = useLoaderData<typeof loader>();
+  const { history, stats, currencyCode } = useLoaderData<typeof loader>();
+  const { t, locale } = useI18n();
+  const money = (cents: number) => formatMoney(cents, currencyCode, locale);
 
   const rows = history.map((h) => [
     h.date,
-    <Link url={h.orderUrl} external>
+    <Link key={h.id} url={h.orderUrl} external>
       #{h.orderId.slice(-8)}
     </Link>,
     h.giftProductTitle,
-    h.giftProductPrice,
-    h.cartTotal,
-    h.thresholdBase,
+    money(h.giftProductPrice),
+    money(h.cartTotal),
+    money(h.thresholdBase),
   ]);
 
+  const statCards = [
+    { value: String(stats.totalGifts), label: t("history.giftsGiven") },
+    { value: money(stats.totalValue), label: t("history.totalValue") },
+    { value: money(stats.averageValue), label: t("history.averageValue") },
+  ];
+
   return (
-    <Page title="Gift History" subtitle="Track all gifts given to customers">
+    <Page title={t("history.title")} subtitle={t("history.subtitle")}>
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
             <Layout>
-              <Layout.Section variant="oneThird">
-                <Card>
-                  <BlockStack gap="200" align="center">
-                    <Text variant="heading2xl" as="p">
-                      {stats.totalGifts}
-                    </Text>
-                    <Text as="p" tone="subdued">Gifts Given</Text>
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-              <Layout.Section variant="oneThird">
-                <Card>
-                  <BlockStack gap="200" align="center">
-                    <Text variant="heading2xl" as="p">
-                      {stats.totalValue}
-                    </Text>
-                    <Text as="p" tone="subdued">Total Gift Value</Text>
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
-              <Layout.Section variant="oneThird">
-                <Card>
-                  <BlockStack gap="200" align="center">
-                    <Text variant="heading2xl" as="p">
-                      {stats.averageValue}
-                    </Text>
-                    <Text as="p" tone="subdued">Avg Gift Value</Text>
-                  </BlockStack>
-                </Card>
-              </Layout.Section>
+              {statCards.map((card) => (
+                <Layout.Section variant="oneThird" key={card.label}>
+                  <Card>
+                    <BlockStack gap="200" align="center">
+                      <Text variant="heading2xl" as="p">
+                        {card.value}
+                      </Text>
+                      <Text as="p" tone="subdued">{card.label}</Text>
+                    </BlockStack>
+                  </Card>
+                </Layout.Section>
+              ))}
             </Layout>
 
             <Card>
               {history.length === 0 ? (
-                <EmptyState
-                  heading="No gifts given yet"
-                  image=""
-                >
+                <EmptyState heading={t("history.emptyTitle")} image="">
                   <Text as="p" tone="subdued">
-                    Gift history will appear here once customers start receiving gifts.
+                    {t("history.emptyBody")}
                   </Text>
                 </EmptyState>
               ) : (
                 <DataTable
                   columnContentTypes={["text", "text", "text", "text", "text", "text"]}
-                  headings={["Date", "Order", "Gift Product", "Gift Price", "Cart Total", "Threshold Base"]}
+                  headings={[
+                    t("history.colDate"),
+                    t("history.colOrder"),
+                    t("history.colProduct"),
+                    t("history.colPrice"),
+                    t("history.colCartTotal"),
+                    t("history.colThreshold"),
+                  ]}
                   rows={rows}
                 />
               )}

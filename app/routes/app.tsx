@@ -5,6 +5,7 @@ import { json } from "@remix-run/node";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { getBillingAccess } from "~/lib/billing.server";
 import { syncBilling } from "~/models/billing.server";
+import { useI18n } from "~/i18n/react";
 import { authenticate } from "~/shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -23,6 +24,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export default function AppLayout() {
   const { access } = useLoaderData<typeof loader>();
   const { pathname } = useLocation();
+  const { t } = useI18n();
 
   return (
     <Frame>
@@ -31,10 +33,9 @@ export default function AppLayout() {
             <Layout.Section>
               <BlockStack gap="400">
                 {access.reason === "trial" && !pathname.startsWith("/app/billing") && (
-                  <Banner tone="info" title={`Free trial: ${access.trialDaysLeft} day(s) left`}>
+                  <Banner tone="info" title={t("trialBanner.title", { days: access.trialDaysLeft })}>
                     <Text as="p">
-                      Subscribe on the <Link to="/app/billing">Billing</Link> page to keep gifts
-                      running after the trial.
+                      {t("trialBanner.body")} <Link to="/app/billing">{t("trialBanner.link")}</Link>
                     </Text>
                   </Banner>
                 )}

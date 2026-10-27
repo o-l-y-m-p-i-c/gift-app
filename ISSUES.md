@@ -4,9 +4,9 @@ Oct 27, 2026 · @Nick · updated after deploying to Shopify (version gift-thresh
 
 ## Summary
 
-Of the 31 original issues, 27 are fixed and 4 are still open. A further 8 bugs turned up on the live store after deploying: 7 are fixed and live, and 1 is only partly live until the server is redeployed. Three deployment steps remain before the App Store submission.
+Of the 31 original issues, 28 are fixed and 3 are still open. A further 8 bugs turned up on the live store after deploying: 7 are fixed and live, and 1 is only partly live until the server is redeployed. Three deployment steps remain before the App Store submission.
 
-- **Open from the review:** S5 (waiting on Shopify; gift history is off meanwhile), B1 (billing test), B4 (admin translations), B2 (exact payment figures).
+- **Open from the review:** S5 (waiting on Shopify; gift history is off meanwhile), B1 (billing test), B2 (exact payment figures).
 - **After deploying:** P1–P8 below. P8's faster loading needs the server changes on Render.
 - **Deployment steps:** D1–D3 below. The server on Render doesn't have the 14 unpushed commits on `feat/subscription-billing`.
 
@@ -40,7 +40,7 @@ Sorted by severity.
 | T8 | data-shop uses request.host, not the myshopify domain | Theme | Medium | Done | Uses shop.permanent_domain |
 | T10 | Product form detection covers only 3 selectors | Theme | Medium | Done | Product form selector setting, common variant events, URL and input polling |
 | S2 | getShopId can fall back to another shop | Security | Medium | Done | getShopId and other unused ?shop= helpers deleted |
-| B4 | Admin is English only; storefront has en, lv, ru | App Store | Medium | In progress | Storefront in 8 languages (en, de, fr, es, it, nl, lv, ru); admin is still English only |
+| B4 | Admin is English only; storefront has en, lv, ru | App Store | Medium | Done | Storefront and admin in 8 languages (en, de, fr, es, it, nl, lv, ru). The admin follows the language Shopify passes when it opens the app, then the browser language |
 | F2 | Extension config split across several files | Functions | Medium | Done | Unused Rust functions removed; one shopify.extension.toml for the theme extension |
 | O3 | No tests, lint or CI for the app | Ops | Medium | Done | Vitest unit and jsdom tests (21), ESLint, GitHub Actions CI |
 | S4 | CORS allows any origin | Security | Low | Done | CORS headers only outside production |

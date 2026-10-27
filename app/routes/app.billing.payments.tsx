@@ -13,6 +13,8 @@ import { useLoaderData } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { PLAN_CURRENCY, PLAN_PRICE, getBillingAccess } from "~/lib/billing.server";
+import { formatMoney } from "~/lib/tiers";
+import { useI18n } from "~/i18n/react";
 import { getPaymentStats, getPayments, syncBilling } from "~/models/billing.server";
 import { authenticate } from "~/shopify.server";
 
@@ -25,38 +27,30 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const access = getBillingAccess(billing);
   const toDate = (date: Date) => date.toISOString().split("T")[0];
 
+  // Amounts stay in cents; the page formats them in the admin's language.
   return json({
+    currency: PLAN_CURRENCY,
     stats: {
-      totalPaid: formatMoney(stats.totalPaid, PLAN_CURRENCY),
+      totalPaid: stats.totalPaid,
       paymentCount: stats.paymentCount,
-      averagePayment: formatMoney(
-        stats.paymentCount > 0 ? Math.round(stats.totalPaid / stats.paymentCount) : 0,
-        PLAN_CURRENCY,
-      ),
+      averagePayment: stats.paymentCount > 0 ? Math.round(stats.totalPaid / stats.paymentCount) : 0,
       lastPaymentAt: stats.lastPaymentAt ? toDate(stats.lastPaymentAt) : null,
-      monthlyCost: formatMoney(access.reason === "subscribed" ? Math.round(PLAN_PRICE * 100) : 0, PLAN_CURRENCY),
+      monthlyCost: access.reason === "subscribed" ? Math.round(PLAN_PRICE * 100) : 0,
       nextChargeAt:
         access.reason === "subscribed" && billing.currentPeriodEnd
           ? toDate(billing.currentPeriodEnd)
           : null,
-      byMonth: stats.byMonth.map((entry) => ({
-        month: entry.month,
-        count: entry.count,
-        amount: formatMoney(entry.amount, PLAN_CURRENCY),
-      })),
+      byMonth: stats.byMonth,
     },
     payments: payments.map((payment) => ({
       id: payment.id,
       date: toDate(payment.periodStart),
       period: `${toDate(payment.periodStart)} – ${toDate(payment.periodEnd)}`,
-      amount: formatMoney(payment.amount, payment.currencyCode),
+      amount: payment.amount,
+      currency: payment.currencyCode,
       test: payment.test,
     })),
   });
-}
-
-function formatMoney(cents: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
 function StatCard({ value, label }: { value: string | number; label: string }) {
@@ -75,66 +69,68 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
 }
 
 export default function PaymentsPage() {
-  const { stats, payments } = useLoaderData<typeof loader>();
+  const { currency, stats, payments } = useLoaderData<typeof loader>();
+  const { t, locale } = useI18n();
+  const money = (cents: number, code = currency) => formatMoney(cents, code, locale);
 
-  const monthRows = stats.byMonth.map((entry) => [entry.month, entry.count, entry.amount]);
+  const monthRows = stats.byMonth.map((entry) => [entry.month, entry.count, money(entry.amount)]);
   const paymentRows = payments.map((payment) => [
     payment.date,
     payment.period,
-    payment.amount,
+    money(payment.amount, payment.currency),
     <InlineStack gap="100" key={payment.id}>
-      <Badge tone="success">Paid</Badge>
-      {payment.test && <Badge>Test</Badge>}
+      <Badge tone="success">{t("payments.paid")}</Badge>
+      {payment.test && <Badge>{t("payments.test")}</Badge>}
     </InlineStack>,
   ]);
 
   return (
     <Page
-      title="Payment statistics"
-      subtitle="Subscription charges for the Gift App"
-      backAction={{ content: "Billing", url: "/app/billing" }}
+      title={t("payments.title")}
+      subtitle={t("payments.subtitle")}
+      backAction={{ content: t("payments.back"), url: "/app/billing" }}
     >
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
             <Layout>
               <Layout.Section variant="oneThird">
-                <StatCard value={stats.totalPaid} label="Total paid" />
+                <StatCard value={money(stats.totalPaid)} label={t("payments.totalPaid")} />
               </Layout.Section>
               <Layout.Section variant="oneThird">
-                <StatCard value={stats.paymentCount} label="Payments" />
+                <StatCard value={stats.paymentCount} label={t("payments.count")} />
               </Layout.Section>
               <Layout.Section variant="oneThird">
-                <StatCard value={stats.averagePayment} label="Avg payment" />
+                <StatCard value={money(stats.averagePayment)} label={t("payments.average")} />
               </Layout.Section>
             </Layout>
             <Layout>
               <Layout.Section variant="oneThird">
-                <StatCard value={stats.monthlyCost} label="Current monthly cost" />
+                <StatCard value={money(stats.monthlyCost)} label={t("payments.monthlyCost")} />
               </Layout.Section>
               <Layout.Section variant="oneThird">
-                <StatCard value={stats.lastPaymentAt ?? "—"} label="Last payment" />
+                <StatCard value={stats.lastPaymentAt ?? "—"} label={t("payments.lastPayment")} />
               </Layout.Section>
               <Layout.Section variant="oneThird">
-                <StatCard value={stats.nextChargeAt ?? "—"} label="Next charge" />
+                <StatCard value={stats.nextChargeAt ?? "—"} label={t("payments.nextCharge")} />
               </Layout.Section>
             </Layout>
 
             <Card>
               <BlockStack gap="300">
                 <Text variant="headingMd" as="h2">
-                  By month
+                  {t("payments.byMonth")}
                 </Text>
                 {monthRows.length === 0 ? (
                   <Text as="p" tone="subdued">
-                    No paid billing cycles yet.
+                    {t("payments.noCycles")}
                   </Text>
                 ) : (
                   <DataTable
                     columnContentTypes={["text", "numeric", "numeric"]}
-                    headings={["Month", "Payments", "Amount"]}
+                    headings={[t("payments.colMonth"), t("payments.colPayments"), t("payments.colAmount")]}
                     rows={monthRows}
-                    totals={["", stats.paymentCount, stats.totalPaid]}
+                    totals={["", stats.paymentCount, money(stats.totalPaid)]}
                     showTotalsInFooter
                   />
                 )}
@@ -143,25 +139,28 @@ export default function PaymentsPage() {
 
             <Card>
               {paymentRows.length === 0 ? (
-                <EmptyState heading="No payments yet" image="">
+                <EmptyState heading={t("payments.emptyTitle")} image="">
                   <Text as="p" tone="subdued">
-                    Payments appear here after the free trial, once each 30-day
-                    billing cycle is charged.
+                    {t("payments.emptyBody")}
                   </Text>
                 </EmptyState>
               ) : (
                 <BlockStack gap="300">
                   <Text variant="headingMd" as="h2">
-                    All payments
+                    {t("payments.allPayments")}
                   </Text>
                   <DataTable
                     columnContentTypes={["text", "text", "numeric", "text"]}
-                    headings={["Charged", "Billing period", "Amount", "Status"]}
+                    headings={[
+                      t("payments.colCharged"),
+                      t("payments.colPeriod"),
+                      t("payments.colAmount"),
+                      t("payments.colStatus"),
+                    ]}
                     rows={paymentRows}
                   />
                   <Text as="p" tone="subdued" variant="bodySm">
-                    Test charges are excluded from the totals. Charges appear on your
-                    Shopify invoice, which remains the official record.
+                    {t("payments.note")}
                   </Text>
                 </BlockStack>
               )}

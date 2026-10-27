@@ -25,6 +25,7 @@ import {
 import { invalidateGiftProducts } from "~/models/gift-products.server";
 import { syncStorefrontConfig } from "~/models/storefront-config.server";
 import { authenticate } from "~/shopify.server";
+import { useI18n } from "~/i18n/react";
 
 type CollectionInfo = {
   id: string;
@@ -83,13 +84,14 @@ export async function action({ request }: ActionFunctionArgs) {
   invalidateGiftProducts(shopId);
   await syncStorefrontConfig(shopId);
 
-  return json({ success: true, message: "Settings saved" });
+  return json({ success: true, messageKey: "settings.msgSaved" as const });
 }
 
 export default function SettingsPage() {
   const { settings, collections, tags } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
+  const { t } = useI18n();
 
   const [thresholdMode, setThresholdMode] = useState<string[]>(
     settings.useTotalAfterDiscounts ? ["after"] : ["before"],
@@ -171,37 +173,39 @@ export default function SettingsPage() {
   // DataTable rows for excluded collections
   const excludedRows = excludedCollections.map((c) => [
     c.title,
-    `${c.productsCount} products`,
+    t("settings.productCount", { count: c.productsCount }),
     <Button
+      key={c.id}
       size="slim"
       tone="critical"
       onClick={() => handleRemoveExclusion(c.id)}
     >
-      Remove
+      {t("settings.remove")}
     </Button>,
   ]);
 
   // DataTable rows for available collections
   const availableRows = availableCollections.map((c) => [
     c.title,
-    `${c.productsCount} products`,
+    t("settings.productCount", { count: c.productsCount }),
     <Button
+      key={c.id}
       size="slim"
       onClick={() => handleAddExclusion(c.id)}
     >
-      Exclude
+      {t("settings.exclude")}
     </Button>,
   ]);
 
   return (
-    <Page title="Settings" subtitle="Configure gift threshold behavior">
+    <Page title={t("settings.title")} subtitle={t("settings.subtitle")}>
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
             {actionData && (
               <Card>
                 <Text as="p" tone={actionData.success ? "success" : "critical"}>
-                  {actionData.message}
+                  {t(actionData.messageKey)}
                 </Text>
               </Card>
             )}
@@ -209,14 +213,14 @@ export default function SettingsPage() {
             <Card>
               <BlockStack gap="300">
                 <Text variant="headingMd" as="h2">
-                  Gift app status
+                  {t("settings.statusTitle")}
                 </Text>
                 <InlineStack gap="300" blockAlign="center">
                   <button
                     type="button"
                     role="switch"
                     aria-checked={active}
-                    aria-label="Enable gift app on the storefront"
+                    aria-label={t("settings.statusToggle")}
                     onClick={() => setActive((current) => !current)}
                     style={{
                       width: "52px",
@@ -244,10 +248,10 @@ export default function SettingsPage() {
                   </button>
                   <BlockStack gap="100">
                     <Text as="p" fontWeight="semibold">
-                      {active ? "Enabled" : "Disabled"}
+                      {active ? t("settings.enabled") : t("settings.disabled")}
                     </Text>
                     <Text as="p" tone="subdued">
-                      When disabled, gift widgets and gift discount endpoints are turned off.
+                      {t("settings.statusHelp")}
                     </Text>
                   </BlockStack>
                 </InlineStack>
@@ -257,20 +261,20 @@ export default function SettingsPage() {
             <Card>
               <BlockStack gap="400">
                 <Text variant="headingMd" as="h2">
-                  Threshold Calculation
+                  {t("settings.thresholdTitle")}
                 </Text>
                 <ChoiceList
-                  title="Calculate threshold from:"
+                  title={t("settings.thresholdChoice")}
                   choices={[
                     {
-                      label: "Cart subtotal (before discounts/promo codes)",
+                      label: t("settings.thresholdBefore"),
                       value: "before",
-                      helpText: "User qualifies for gift based on total items price, ignoring promo codes",
+                      helpText: t("settings.thresholdBeforeHelp"),
                     },
                     {
-                      label: "Cart total (after discounts/promo codes)",
+                      label: t("settings.thresholdAfter"),
                       value: "after",
-                      helpText: "User qualifies for gift based on final amount after all discounts are applied",
+                      helpText: t("settings.thresholdAfterHelp"),
                     },
                   ]}
                   selected={thresholdMode}
@@ -278,8 +282,7 @@ export default function SettingsPage() {
                 />
                 <Box paddingBlock="200">
                   <Text as="p" tone="subdued">
-                    The gift product is always excluded from the threshold calculation,
-                    regardless of this setting.
+                    {t("settings.thresholdNote")}
                   </Text>
                 </Box>
               </BlockStack>
@@ -288,20 +291,20 @@ export default function SettingsPage() {
             <Card>
               <BlockStack gap="400">
                 <Text variant="headingMd" as="h2">
-                  Notifications
+                  {t("settings.notificationsTitle")}
                 </Text>
                 <ChoiceList
-                  title="Show notifications in cart:"
+                  title={t("settings.notificationsChoice")}
                   choices={[
                     {
-                      label: "Level up — when a higher gift tier is unlocked",
+                      label: t("settings.notifyLevelUp"),
                       value: "levelUp",
-                      helpText: "Shows a celebratory message when user reaches a new threshold",
+                      helpText: t("settings.notifyLevelUpHelp"),
                     },
                     {
-                      label: "Gift removed — when gift is auto-removed due to threshold drop",
+                      label: t("settings.notifyRemoval"),
                       value: "removal",
-                      helpText: "Shows a notice when promo code or item removal drops cart below threshold",
+                      helpText: t("settings.notifyRemovalHelp"),
                     },
                   ]}
                   selected={notifications}
@@ -314,23 +317,22 @@ export default function SettingsPage() {
             <Card>
               <BlockStack gap="400">
                 <Text variant="headingMd" as="h2">
-                  Excluded Collections ({excludedCollections.length})
+                  {t("settings.excludedCollectionsTitle", { count: excludedCollections.length })}
                 </Text>
                 <Text as="p" tone="subdued">
-                  Products from these collections will not be shown as available gifts.
-                  Products already in the cart are also excluded automatically.
+                  {t("settings.excludedCollectionsHelp")}
                 </Text>
 
                 {excludedCollections.length > 0 ? (
                   <DataTable
                     columnContentTypes={["text", "text", "numeric"]}
-                    headings={["Collection", "Products", ""]}
+                    headings={[t("settings.colCollection"), t("settings.colProducts"), ""]}
                     rows={excludedRows}
                   />
                 ) : (
                   <Box paddingBlock="300">
                     <Text as="p" tone="subdued">
-                      No collections excluded. All products are eligible as gifts.
+                      {t("settings.noExcludedCollections")}
                     </Text>
                   </Box>
                 )}
@@ -340,27 +342,27 @@ export default function SettingsPage() {
             <Card>
               <BlockStack gap="400">
                 <Text variant="headingMd" as="h2">
-                  Available Collections ({availableCollections.length})
+                  {t("settings.availableCollectionsTitle", { count: availableCollections.length })}
                 </Text>
                 <TextField
-                  label="Search collections"
+                  label={t("settings.searchCollections")}
                   value={searchQuery}
                   onChange={setSearchQuery}
                   autoComplete="off"
-                  placeholder="Type to filter..."
+                  placeholder={t("settings.searchPlaceholder")}
                 />
                 {availableCollections.length > 0 ? (
                   <DataTable
                     columnContentTypes={["text", "text", "numeric"]}
-                    headings={["Collection", "Products", ""]}
+                    headings={[t("settings.colCollection"), t("settings.colProducts"), ""]}
                     rows={availableRows}
                   />
                 ) : (
                   <Box paddingBlock="300">
                     <Text as="p" tone="subdued">
                       {allCollections.length === 0
-                        ? "No collections found. Make sure the Admin API token is configured."
-                        : "All collections are excluded or no matches found."}
+                        ? t("settings.noCollections")
+                        : t("settings.noCollectionMatches")}
                     </Text>
                   </Box>
                 )}
@@ -370,10 +372,10 @@ export default function SettingsPage() {
             <Card>
               <BlockStack gap="400">
                 <Text variant="headingMd" as="h2">
-                  Excluded Tags ({excludedTagSet.length})
+                  {t("settings.excludedTagsTitle", { count: excludedTagSet.length })}
                 </Text>
                 <Text as="p" tone="subdued">
-                  Products with any of these tags will not be shown as available gifts.
+                  {t("settings.excludedTagsHelp")}
                 </Text>
 
                 {excludedTagSet.length > 0 ? (
@@ -390,25 +392,25 @@ export default function SettingsPage() {
                 ) : (
                   <Box paddingBlock="200">
                     <Text as="p" tone="subdued">
-                      No tags excluded.
+                      {t("settings.noExcludedTags")}
                     </Text>
                   </Box>
                 )}
 
                 <Box paddingBlock="200">
                   <Text as="p" tone="subdued">
-                    Add a custom tag (even if it doesn't exist yet):
+                    {t("settings.customTagHelp")}
                   </Text>
                 </Box>
                 <InlineStack gap="200" align="start">
                   <div style={{ flex: 1, maxWidth: "300px" }}>
                     <TextField
-                      label="Custom tag"
+                      label={t("settings.customTagLabel")}
                       labelHidden
                       value={customTag}
                       onChange={setCustomTag}
                       autoComplete="off"
-                      placeholder="e.g., no-gift, sample, gift-card"
+                      placeholder={t("settings.customTagPlaceholder")}
                     />
                   </div>
                   <Button
@@ -417,7 +419,7 @@ export default function SettingsPage() {
                       setCustomTag("");
                     }}
                   >
-                    Add Tag
+                    {t("settings.addTag")}
                   </Button>
                 </InlineStack>
               </BlockStack>
@@ -427,14 +429,14 @@ export default function SettingsPage() {
               <Card>
                 <BlockStack gap="400">
                   <Text variant="headingMd" as="h2">
-                    Available Tags ({availableTags.length})
+                    {t("settings.availableTagsTitle", { count: availableTags.length })}
                   </Text>
                   <TextField
-                    label="Search tags"
+                    label={t("settings.searchTags")}
                     value={tagSearchQuery}
                     onChange={setTagSearchQuery}
                     autoComplete="off"
-                    placeholder="Type to filter..."
+                    placeholder={t("settings.searchPlaceholder")}
                   />
                   {availableTags.length > 0 ? (
                     <InlineStack gap="200" wrap>
@@ -448,7 +450,7 @@ export default function SettingsPage() {
                       ))}
                       {availableTags.length > 100 && (
                         <Text as="p" tone="subdued">
-                          Showing first 100 tags. Use search to filter.
+                          {t("settings.tagLimit")}
                         </Text>
                       )}
                     </InlineStack>
@@ -456,8 +458,8 @@ export default function SettingsPage() {
                     <Box paddingBlock="300">
                       <Text as="p" tone="subdued">
                         {allTags.length === 0
-                          ? "No product tags found in the store."
-                          : "All tags are excluded or no matches found."}
+                          ? t("settings.noTags")
+                          : t("settings.noTagMatches")}
                       </Text>
                     </Box>
                   )}
@@ -466,7 +468,7 @@ export default function SettingsPage() {
             )}
 
             <Button variant="primary" onClick={handleSave}>
-              Save Settings
+              {t("settings.save")}
             </Button>
           </BlockStack>
         </Layout.Section>
