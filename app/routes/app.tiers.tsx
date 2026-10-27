@@ -10,7 +10,6 @@ import {
   Modal,
   TextField,
   Box,
-  InlineStack,
 } from "@shopify/polaris";
 import { useLoaderData, useActionData, useFetcher, useSubmit } from "@remix-run/react";
 import { Switch } from "~/components/Switch";
@@ -125,17 +124,12 @@ function TierStatusSwitch({ id, active }: { id: string; active: boolean }) {
 
   return (
     <BlockStack gap="100">
-      <InlineStack gap="200" blockAlign="center" wrap={false}>
-        <Switch
-          checked={checked}
-          loading={saving}
-          label={t("tiers.colStatus")}
-          onChange={(next) => fetcher.submit({ intent: "update", id, active: String(next) }, { method: "post" })}
-        />
-        <Text as="span" tone={checked ? undefined : "subdued"}>
-          {checked ? t("tiers.active") : t("tiers.inactive")}
-        </Text>
-      </InlineStack>
+      <Switch
+        checked={checked}
+        loading={saving}
+        label={checked ? t("tiers.active") : t("tiers.inactive")}
+        onChange={(next) => fetcher.submit({ intent: "update", id, active: String(next) }, { method: "post" })}
+      />
       {failed && (
         <Text as="span" tone="critical" variant="bodySm">
           {failed.messageKey ? t(failed.messageKey, failed.values) : failed.error}
