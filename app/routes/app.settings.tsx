@@ -22,6 +22,7 @@ import {
   fetchCollectionsForPicker,
   fetchProductTagsForPicker,
 } from "~/models/settings.server";
+import { Switch } from "~/components/Switch";
 import { invalidateGiftProducts } from "~/models/gift-products.server";
 import { syncStorefrontConfig } from "~/models/storefront-config.server";
 import { authenticate } from "~/shopify.server";
@@ -216,36 +217,7 @@ export default function SettingsPage() {
                   {t("settings.statusTitle")}
                 </Text>
                 <InlineStack gap="300" blockAlign="center">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={active}
-                    aria-label={t("settings.statusToggle")}
-                    onClick={() => setActive((current) => !current)}
-                    style={{
-                      width: "52px",
-                      height: "30px",
-                      padding: "3px",
-                      border: "0",
-                      borderRadius: "999px",
-                      backgroundColor: active ? "#008060" : "#8c9196",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: active ? "flex-end" : "flex-start",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: "50%",
-                        backgroundColor: "#ffffff",
-                        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.3)",
-                      }}
-                    />
-                  </button>
+                  <Switch checked={active} onChange={setActive} label={t("settings.statusToggle")} />
                   <BlockStack gap="100">
                     <Text as="p" fontWeight="semibold">
                       {active ? t("settings.enabled") : t("settings.disabled")}

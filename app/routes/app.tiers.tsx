@@ -5,14 +5,15 @@ import {
   Card,
   BlockStack,
   Text,
-  Checkbox,
   DataTable,
   Button,
   Modal,
   TextField,
   Box,
+  InlineStack,
 } from "@shopify/polaris";
-import { useLoaderData, useActionData, useSubmit } from "@remix-run/react";
+import { useLoaderData, useActionData, useFetcher, useSubmit } from "@remix-run/react";
+import { Switch } from "~/components/Switch";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import {
@@ -111,6 +112,39 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
+/**
+ * Each row saves through its own fetcher: the switch flips at once, shows a
+ * spinner until the change is saved and reloaded, and reverts if saving fails.
+ */
+function TierStatusSwitch({ id, active }: { id: string; active: boolean }) {
+  const fetcher = useFetcher<typeof action>();
+  const { t } = useI18n();
+  const saving = fetcher.state !== "idle";
+  const checked = saving ? fetcher.formData?.get("active") === "true" : active;
+  const failed = !saving && fetcher.data && !fetcher.data.success ? fetcher.data : null;
+
+  return (
+    <BlockStack gap="100">
+      <InlineStack gap="200" blockAlign="center" wrap={false}>
+        <Switch
+          checked={checked}
+          loading={saving}
+          label={t("tiers.colStatus")}
+          onChange={(next) => fetcher.submit({ intent: "update", id, active: String(next) }, { method: "post" })}
+        />
+        <Text as="span" tone={checked ? undefined : "subdued"}>
+          {checked ? t("tiers.active") : t("tiers.inactive")}
+        </Text>
+      </InlineStack>
+      {failed && (
+        <Text as="span" tone="critical" variant="bodySm">
+          {failed.messageKey ? t(failed.messageKey, failed.values) : failed.error}
+        </Text>
+      )}
+    </BlockStack>
+  );
+}
+
 export default function TiersPage() {
   const { tiers, currencyCode } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -122,25 +156,11 @@ export default function TiersPage() {
   const [newMinAmount, setNewMinAmount] = useState("");
   const [newPercent, setNewPercent] = useState("");
 
-  const handleTierActiveChange = (id: string, active: boolean) => {
-    const formData = new FormData();
-    formData.append("intent", "update");
-    formData.append("id", String(id));
-    formData.append("active", String(active));
-    submit(formData, { method: "post" });
-  };
-
   const rows = tiers.map((tier) => [
     money(tier.minAmount),
     `${tier.giftPercent.toFixed(1)}%`,
     money(tier.giftAmount),
-    <Checkbox
-      key={`active-${tier.id}`}
-      label={tier.active ? t("tiers.active") : t("tiers.inactive")}
-      labelHidden
-      checked={tier.active}
-      onChange={(checked) => handleTierActiveChange(tier.id, checked)}
-    />,
+    <TierStatusSwitch key={`active-${tier.id}`} id={tier.id} active={tier.active} />,
     <Button
       key={`delete-${tier.id}`}
       size="slim"
