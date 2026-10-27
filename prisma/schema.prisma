@@ -5,8 +5,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection for the running app.
+  url       = env("DATABASE_URL")
+  // Direct (non-pooled) connection for migrations: Prisma's migration lock
+  // doesn't work through a connection pooler such as Neon's PgBouncer.
+  directUrl = env("DIRECT_URL")
 }
 
 // Shopify OAuth sessions (required by @shopify/shopify-app-session-storage-prisma)

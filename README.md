@@ -24,7 +24,9 @@ The plan name, price, currency and trial length come from env vars (see below).
 
 1. **Create the app** in the Partner Dashboard (or Dev Dashboard) and copy its client ID and client secret.
 2. **Link the config:** run `shopify app config link` and pick the new app. This fills `client_id` and the URLs in `shopify.app.toml`. Or replace the `YOUR_CLIENT_ID` and `YOUR_APP_HOST` placeholders by hand.
-3. **Set env vars** on the host (see `.env.example`): `DATABASE_URL`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES`, and optionally the `BILLING_*` vars.
+3. **Set env vars** on the host (see `.env.example`): `DATABASE_URL`, `DIRECT_URL`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SCOPES`, and optionally the `BILLING_*` vars.
+   - `DATABASE_URL` is the pooled connection the app uses. On Neon, that's the host ending in `-pooler`.
+   - `DIRECT_URL` is the direct connection for migrations: the same database, with the `-pooler` part removed from the host. Prisma's migration lock doesn't work through a pooler, so migrations over the pooled URL hang and leave the lock held. Without a pooler, set both to the same value.
 4. **Deploy the server.** `render.yaml` deploys to Render on an always-on plan, runs `prisma migrate deploy` on start, and checks `/healthz`. The `Dockerfile` does the same anywhere else.
 5. **Deploy the app config and theme extension:** `npm run shopify:deploy`. This registers the webhooks, including the GDPR compliance webhooks, the app proxy and the scopes.
 6. **Partner Dashboard settings:**
