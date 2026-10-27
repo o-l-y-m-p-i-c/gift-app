@@ -4,6 +4,7 @@ import { corsJson, handleCorsPreflight } from "~/lib/cors";
 import { adminGraphql } from "~/lib/admin-api.server";
 import { getActiveTiers } from "~/models/tier.server";
 import { getSettings } from "~/models/settings.server";
+import { hasBillingAccess } from "~/models/billing.server";
 import { authenticate } from "~/shopify.server";
 
 /**
@@ -41,7 +42,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const shop = session.shop;
   const settings = await getSettings(shop);
-  if (!settings.active) {
+  if (!settings.active || !(await hasBillingAccess(shop))) {
     return corsJson({ eligible: false, reason: "disabled" });
   }
 

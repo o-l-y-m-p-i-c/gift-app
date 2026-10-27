@@ -11,10 +11,16 @@ import {
 } from "@shopify/polaris";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Link as RemixLink } from "@remix-run/react";
+import { getBillingAccess } from "~/lib/billing.server";
+import { syncBilling } from "~/models/billing.server";
 import { authenticate } from "~/shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await authenticate.admin(request);
+  const { session, redirect } = await authenticate.admin(request);
+  const billing = await syncBilling(session.shop);
+  if (!getBillingAccess(billing).hasAccess) {
+    throw redirect("/app/billing");
+  }
   return null;
 }
 

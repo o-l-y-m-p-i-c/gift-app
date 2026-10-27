@@ -81,3 +81,51 @@ model GiftHistory {
   @@index([shopId])
   @@index([orderId])
 }
+
+// Billing state per shop — cached so storefront requests can check access
+// without calling the Shopify Admin API.
+model ShopBilling {
+  id                 Int       @id @default(autoincrement())
+  shopId             String    @unique
+  trialStartedAt     DateTime  @default(now()) // kept across reinstalls so the trial is used once
+  isDevStore         Boolean   @default(false)
+  subscriptionId     String?   // active Shopify AppSubscription GID
+  subscriptionStatus String?   // ACTIVE | PENDING | CANCELLED | ...
+  currentPeriodEnd   DateTime?
+  lastSyncedAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+// Shopify app subscriptions (charges) the shop has created
+model BillingSubscription {
+  id               String    @id // Shopify AppSubscription GID
+  shopId           String
+  name             String
+  status           String
+  test             Boolean   @default(false)
+  trialDays        Int       @default(0)
+  amount           Int       // in cents
+  currencyCode     String
+  createdAt        DateTime
+  currentPeriodEnd DateTime?
+  updatedAt        DateTime  @updatedAt
+
+  @@index([shopId])
+}
+
+// Recurring payments, one per paid 30-day billing cycle
+model BillingPayment {
+  id             Int      @id @default(autoincrement())
+  shopId         String
+  subscriptionId String
+  amount         Int      // in cents
+  currencyCode   String
+  periodStart    DateTime
+  periodEnd      DateTime
+  test           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([shopId])
+  @@unique([subscriptionId, periodStart])
+}

@@ -3,6 +3,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { corsJson, handleCorsPreflight } from "~/lib/cors";
 import { adminGraphql } from "~/lib/admin-api.server";
+import { hasBillingAccess } from "~/models/billing.server";
 import { authenticate } from "~/shopify.server";
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -42,6 +43,9 @@ async function handleGiftCode(shopDomain: string, body: any) {
   const settings = await prisma.appSettings.findUnique({ where: { shopId: shopDomain } });
   if (settings && !settings.active) {
     return corsJson({ error: "The gift app is disabled." }, { status: 403 });
+  }
+  if (!(await hasBillingAccess(shopDomain))) {
+    return corsJson({ error: "The gift app subscription is inactive." }, { status: 402 });
   }
 
   const giftVariantIds: string[] = Array.isArray(body?.giftVariantIds)

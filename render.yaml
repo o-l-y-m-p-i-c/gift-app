@@ -20,6 +20,14 @@ services:
         value: test-store-size-localization.myshopify.com
       - key: SCOPES
         value: read_products,write_products,read_orders,read_discounts,write_discounts,write_app_proxy
+      - key: BILLING_PLAN_NAME
+        value: Gift App Pro
+      - key: BILLING_PLAN_PRICE
+        value: "9.99"
+      - key: BILLING_PLAN_CURRENCY
+        value: USD
+      - key: BILLING_TRIAL_DAYS
+        value: "14"
       - key: NODE_ENV
         value: production
       - key: PORT
