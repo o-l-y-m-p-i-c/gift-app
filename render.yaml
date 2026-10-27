@@ -25,7 +25,7 @@ services:
       - key: SUPPORT_EMAIL
         sync: false
       - key: SCOPES
-        value: read_products,read_discounts,write_discounts,read_orders
+        value: read_products,read_discounts,write_discounts,read_orders,read_metaobjects,write_metaobjects
       - key: BILLING_PLAN_NAME
         value: Gift App Pro
       - key: BILLING_PLAN_PRICE

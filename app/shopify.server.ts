@@ -12,6 +12,8 @@ const shopify = shopifyApp({
     "read_discounts",
     "write_discounts",
     "read_orders",
+    "read_metaobjects",
+    "write_metaobjects",
   ],
   appUrl: process.env.SHOPIFY_APP_URL!,
   sessionStorage: new PrismaSessionStorage(prisma),
