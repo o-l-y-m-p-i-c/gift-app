@@ -451,7 +451,7 @@
 
   const productCache = new Map();
   const PRODUCT_CACHE_TTL = 5 * 60 * 1000;
-  const SESSION_CACHE_PREFIX = "giftProducts:";
+  const SESSION_CACHE_PREFIX = "giftProducts:v2:";
 
   // Kept in sessionStorage too, so moving between pages doesn't refetch.
   function readSessionProducts(key) {
@@ -471,6 +471,50 @@
     }
   }
 
+  // One list per shop, fetched for the largest tier budget and filtered here,
+  // so cart changes (which change the budget) don't each hit the app proxy.
+  // Shopify rate-limits the proxy, and a burst of cart updates used to send a
+  // request per change.
+  const PRODUCT_FETCH_LIMIT = 250;
+  const productRequests = new Map();
+  let productsRetryAt = 0;
+
+  function largestShopBudget() {
+    return tiers.reduce((max, tier) => Math.max(max, tier.shopGiftAmount || 0), 0);
+  }
+
+  function requestProducts(shopMaxPrice) {
+    const cacheKey = `${getConfig().shop}:${shopMaxPrice}`;
+    const cached = productCache.get(cacheKey) || readSessionProducts(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached);
+
+    const pending = productRequests.get(cacheKey);
+    if (pending) return pending;
+    // After a 429 or an error, wait before asking again; serve the last list meanwhile.
+    if (Date.now() < productsRetryAt) {
+      return cached ? Promise.resolve(cached) : Promise.reject(new Error("Gift products are temporarily unavailable"));
+    }
+
+    const params = new URLSearchParams({ maxPrice: String(shopMaxPrice), limit: String(PRODUCT_FETCH_LIMIT) });
+    const request = fetchJson(`${appUrl("products")}?${params}`)
+      .then((data) => {
+        const products = data.products || [];
+        // Empty lists are cached too, or every render would ask again.
+        const entry = { expiresAt: Date.now() + PRODUCT_CACHE_TTL, products, complete: products.length < PRODUCT_FETCH_LIMIT };
+        productCache.set(cacheKey, entry);
+        writeSessionProducts(cacheKey, entry);
+        return entry;
+      })
+      .catch((error) => {
+        productsRetryAt = Date.now() + (/ 429 /.test(String(error?.message)) ? 60_000 : 15_000);
+        if (cached) return cached;
+        throw error;
+      })
+      .finally(() => productRequests.delete(cacheKey));
+    productRequests.set(cacheKey, request);
+    return request;
+  }
+
   /**
    * Gift products the customer can afford with `maxPrice` (customer-currency
    * cents). Prices in the result are converted to the customer's currency.
@@ -478,28 +522,16 @@
   async function fetchGiftProducts(maxPrice, excludeVariantIds = new Set(), limit = 50) {
     const shopMaxPrice = toShopCurrency(maxPrice);
     if (shopMaxPrice <= 0) return [];
-    const cacheKey = `${getConfig().shop}:${shopMaxPrice}:${limit}`;
-    const cached = productCache.get(cacheKey) || readSessionProducts(cacheKey);
-    // Cached prices are in the shop currency; convert for the current currency.
-    let products = cached && cached.expiresAt > Date.now()
-      ? cached.products.map((product) => ({ ...product, price: toPresentment(product.price) }))
-      : null;
 
-    if (!products) {
-      const params = new URLSearchParams({ maxPrice: String(shopMaxPrice), limit: String(limit) });
-      const data = await fetchJson(`${appUrl("products")}?${params}`);
-      const shopProducts = data.products || [];
-      if (shopProducts.length > 0) {
-        const entry = { expiresAt: Date.now() + PRODUCT_CACHE_TTL, products: shopProducts };
-        productCache.set(cacheKey, entry);
-        writeSessionProducts(cacheKey, entry);
-      }
-      products = shopProducts.map((product) => ({ ...product, price: toPresentment(product.price) }));
-    }
+    let entry = await requestProducts(Math.max(shopMaxPrice, largestShopBudget()));
+    // A catalogue too large for one list may have cut cheaper products off;
+    // ask for this budget specifically then.
+    if (!entry.complete && shopMaxPrice < largestShopBudget()) entry = await requestProducts(shopMaxPrice);
 
-    return products.filter(
-      (product) => product.price <= maxPrice && !excludeVariantIds.has(String(product.variantId)),
-    );
+    return entry.products
+      .map((product) => ({ ...product, price: toPresentment(product.price) }))
+      .filter((product) => product.price <= maxPrice && !excludeVariantIds.has(String(product.variantId)))
+      .slice(0, limit);
   }
 
   // ─── Eligibility ───────────────────────────────────────────
