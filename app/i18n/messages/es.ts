@@ -161,8 +161,9 @@ export const es: Messages = {
   "billing.trialEndsOn": "Tu prueba termina el {date}. Si te suscribes ahora, no se te cobrará hasta entonces.",
   "billing.periodEndsOn": "El periodo de facturación actual termina el {date}.",
   "billing.devStoreNote":
-    "Es una tienda de desarrollo, así que no necesitas suscripción. La facturación empieza cuando la tienda pase a un plan de pago de Shopify.",
+    "Es una tienda de desarrollo, así que la app es gratis y no necesitas suscripción. Aun así puedes probarla: las tiendas de desarrollo reciben un cargo de prueba y no se cobra nada. La facturación empieza cuando la tienda pase a un plan de pago de Shopify.",
   "billing.subscribe": "Suscribirse por {price}/mes",
+  "billing.subscribeTest": "Probar la suscripción por {price}/mes (cargo de prueba)",
   "billing.cancelConfirm": "¿Cancelar la suscripción? Los regalos se detienen en tu tienda salvo que la prueba gratis siga activa.",
   "billing.cancel": "Cancelar suscripción",
   "billing.cancelTitle": "¿Cancelar la suscripción?",

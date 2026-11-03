@@ -161,8 +161,9 @@ export const lv: Messages = {
   "billing.trialEndsOn": "Tavs izmēģinājums beidzas {date}. Ja abonēsi tagad, maksa netiks iekasēta līdz tam.",
   "billing.periodEndsOn": "Pašreizējais norēķinu periods beidzas {date}.",
   "billing.devStoreNote":
-    "Šis ir izstrādes veikals, tāpēc abonements nav vajadzīgs. Norēķini sāksies, kad veikals pāries uz maksas Shopify plānu.",
+    "Šis ir izstrādes veikals, tāpēc lietotne ir bezmaksas un abonements nav vajadzīgs. Abonementu tomēr var izmēģināt: izstrādes veikali saņem testa maksājumu, nekas netiek iekasēts. Norēķini sāksies, kad veikals pāries uz maksas Shopify plānu.",
   "billing.subscribe": "Abonēt par {price}/mēnesī",
+  "billing.subscribeTest": "Izmēģināt abonementu par {price}/mēnesī (testa maksājums)",
   "billing.cancelConfirm": "Atcelt abonementu? Dāvanas veikalā tiks apturētas, ja vien bezmaksas izmēģinājums vēl nav beidzies.",
   "billing.cancel": "Atcelt abonementu",
   "billing.cancelTitle": "Atcelt abonementu?",

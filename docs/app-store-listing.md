@@ -108,7 +108,7 @@ The app subscribes to `orders/create` to record which orders included a gift. It
 4. On the storefront, add products worth more than $50 to the cart and open the cart page. The widget shows the unlocked gift budget and gift products that fit it.
 5. Click **Select** on a gift. It's added to the cart at $0 with a single-use discount code.
 6. Lower the cart below $50. The gift is removed automatically.
-7. To test billing on a non-development store, open **Billing** in the app and click **Subscribe**. The Shopify charge approval page opens; approve or decline it, and you can request it again from the Billing page.
+7. To test billing, open **Billing** in the app. On a development store click **Try the subscription (test charge)**; on other stores click **Subscribe**. Shopify's charge approval page opens (a test charge on development stores, so nothing is billed); approve or decline it, then cancel or request it again from the Billing page.
 
 ### Screencast
 
@@ -120,5 +120,6 @@ Record onboarding and every step above in English: install, loading tiers, addin
 | --- | --- |
 | `read_products` | List gift products and check variant prices and availability |
 | `read_discounts` | Check whether a customer's promo code can combine with the gift |
-| `write_discounts` | Create the single-use discount code that makes the gift free |
-| `read_orders` | Record gift history from new orders |
+| `write_discounts` | Create the automatic gift discount (run by the app's discount Function) that makes the chosen gift free |
+| `read_metaobjects`, `write_metaobjects` | Store gift tiers in the app's own metaobject |
+| `read_metaobject_definitions`, `write_metaobject_definitions` | Install the gift tier metaobject definition |

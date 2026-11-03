@@ -32,7 +32,7 @@ The plan name, price, currency and trial length come from env vars (see below).
 6. **Partner Dashboard settings:**
    - **Pricing:** use manual pricing (Billing API), not Managed Pricing. Otherwise subscription requests fail.
    - **Protected customer data:** request access for `orders/create` (Level 1 is enough; the app reads no names, emails or addresses).
-   - **App listing:** copy for every listing field, the protected customer data request and the reviewer instructions is in [docs/app-store-listing.md](docs/app-store-listing.md). The privacy policy is served at `/privacy`. Describe the four scopes: `read_products`, `read_discounts`, `write_discounts`, `read_orders`.
+   - **App listing:** copy for every listing field, the protected customer data request and the reviewer instructions is in [docs/app-store-listing.md](docs/app-store-listing.md). The privacy policy is served at `/privacy`. Describe the scopes: `read_products`, `read_discounts`, `write_discounts` and the metaobject scopes. `read_orders` comes back with gift history, after protected customer data approval.
 
 ### Moving an existing database
 

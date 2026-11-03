@@ -24,7 +24,6 @@ const shopify = shopifyApp({
     "read_products",
     "read_discounts",
     "write_discounts",
-    "read_orders",
     "read_metaobjects",
     "write_metaobjects",
     "read_metaobject_definitions",

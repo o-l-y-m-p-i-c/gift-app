@@ -161,8 +161,9 @@ export const fr: Messages = {
   "billing.trialEndsOn": "Votre essai se termine le {date}. En vous abonnant maintenant, vous ne serez pas débité avant.",
   "billing.periodEndsOn": "La période de facturation en cours se termine le {date}.",
   "billing.devStoreNote":
-    "Il s'agit d'une boutique de développement, aucun abonnement n'est nécessaire. La facturation commence quand la boutique passe à un forfait Shopify payant.",
+    "Il s'agit d'une boutique de développement : l'app est gratuite et aucun abonnement n'est nécessaire. Vous pouvez quand même essayer l'abonnement : les boutiques de développement reçoivent un débit de test, rien n'est facturé. La facturation commence quand la boutique passe à un forfait Shopify payant.",
   "billing.subscribe": "S'abonner pour {price}/mois",
+  "billing.subscribeTest": "Essayer l'abonnement à {price}/mois (débit de test)",
   "billing.cancelConfirm": "Annuler l'abonnement ? Les cadeaux s'arrêtent sur votre boutique, sauf si l'essai gratuit est encore en cours.",
   "billing.cancel": "Annuler l'abonnement",
   "billing.cancelTitle": "Annuler l'abonnement ?",

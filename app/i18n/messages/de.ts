@@ -161,8 +161,9 @@ export const de: Messages = {
   "billing.trialEndsOn": "Deine Testphase endet am {date}. Ein Abo kostet bis dahin nichts.",
   "billing.periodEndsOn": "Der aktuelle Abrechnungszeitraum endet am {date}.",
   "billing.devStoreNote":
-    "Dies ist ein Entwicklungsshop, daher ist kein Abo nötig. Die Abrechnung beginnt, sobald der Shop einen kostenpflichtigen Shopify-Tarif nutzt.",
+    "Dies ist ein Entwicklungsshop, die App ist also kostenlos und kein Abo nötig. Du kannst das Abo trotzdem ausprobieren: Entwicklungsshops erhalten eine Testbelastung, es wird nichts berechnet. Die Abrechnung beginnt, sobald der Shop einen kostenpflichtigen Shopify-Tarif nutzt.",
   "billing.subscribe": "Abonnieren für {price}/Monat",
+  "billing.subscribeTest": "Abo für {price}/Monat testen (Testbelastung)",
   "billing.cancelConfirm": "Abo kündigen? Geschenke enden in deinem Shop, außer die kostenlose Testphase läuft noch.",
   "billing.cancel": "Abo kündigen",
   "billing.cancelTitle": "Abo kündigen?",

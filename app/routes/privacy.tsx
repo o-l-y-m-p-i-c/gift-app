@@ -6,7 +6,7 @@ import { useLoaderData } from "@remix-run/react";
 export async function loader() {
   return json({
     contactEmail: process.env.SUPPORT_EMAIL || "",
-    updated: "October 27, 2026",
+    updated: "November 3, 2026",
   });
 }
 
@@ -36,8 +36,9 @@ export default function PrivacyPolicy() {
           <strong>App settings:</strong> the gift tiers and settings the merchant configures.
         </li>
         <li>
-          <strong>Gift history:</strong> for orders that include a gift, the order ID, gift
-          product, gift price and cart totals.
+          <strong>Gift history (when enabled):</strong> for orders that include a gift, the order
+          ID, gift product, gift price and cart totals. The app does not currently read orders, so
+          no gift history is collected.
         </li>
         <li>
           <strong>Billing:</strong> the status and price of the app subscription, as reported by
@@ -51,9 +52,11 @@ export default function PrivacyPolicy() {
 
       <h2>How the data is used</h2>
       <p>
-        The data is used only to run the app: to show gift offers, create the single-use discount
-        codes that make gifts free, show gift history to the merchant, and manage the
-        subscription. It is not sold or shared with third parties, and it is not used for
+        The data is used only to run the app: to show gift offers, make chosen gifts free, show
+        gift history to the merchant, and manage the subscription. To make gifts free, the app
+        creates one automatic discount, &quot;Free gifts (Gift Threshold)&quot;, in the
+        merchant&apos;s store; carts set up before it existed may use single-use discount codes
+        instead. Shopify removes the app&apos;s discount when the app is uninstalled. It is not sold or shared with third parties, and it is not used for
         advertising.
       </p>
 

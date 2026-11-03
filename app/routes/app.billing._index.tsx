@@ -55,6 +55,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
     access: getBillingAccess(billing),
     subscriptionId: billing.subscriptionId,
+    subscriptionActive: billing.subscriptionStatus === "ACTIVE",
     currentPeriodEnd: billing.currentPeriodEnd?.toISOString().split("T")[0] ?? null,
     subscriptions: subscriptions.map((sub) => ({
       id: sub.id,
@@ -81,20 +82,20 @@ export async function action({ request }: ActionFunctionArgs) {
   const result = (data: ActionResult, status = 200) => json(data, { status });
 
   if (intent === "subscribe") {
-    if (access.reason === "dev_store") {
-      return result({ error: "billing.errDevStore" }, 400);
-    }
-    if (access.reason === "subscribed") {
+    if (access.reason === "subscribed" || state.subscriptionStatus === "ACTIVE") {
       return result({ error: "billing.errSubscribed" }, 400);
     }
+    // Development stores (and App Store reviewers) use the app free, but can
+    // still go through Shopify's approval page with a test charge.
+    const devStore = access.reason === "dev_store";
     try {
       // Carry the remaining app trial over to the Shopify charge so the
       // merchant isn't billed before the 14 days are up. On success this
       // throws a redirect to Shopify's approval page.
       await billing.request({
         plan: PRO_PLAN,
-        isTest: isTestBilling(),
-        trialDays: access.trialDaysLeft,
+        isTest: devStore || isTestBilling(),
+        trialDays: devStore ? TRIAL_DAYS : access.trialDaysLeft,
       });
     } catch (error) {
       if (error instanceof Response) throw error;
@@ -107,7 +108,7 @@ export async function action({ request }: ActionFunctionArgs) {
     try {
       await billing.cancel({
         subscriptionId: state.subscriptionId,
-        isTest: isTestBilling(),
+        isTest: access.reason === "dev_store" || isTestBilling(),
         prorate: true,
       });
     } catch (error) {
@@ -133,7 +134,7 @@ const STATUS_TONE: Record<string, "success" | "warning" | "critical" | "info" | 
 };
 
 export default function BillingPage() {
-  const { plan, access, currentPeriodEnd, subscriptions } = useLoaderData<typeof loader>();
+  const { plan, access, subscriptionActive, currentPeriodEnd, subscriptions } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const revalidator = useRevalidator();
@@ -222,7 +223,15 @@ export default function BillingPage() {
                       </Button>
                     </Form>
                   )}
-                  {access.reason === "subscribed" && (
+                  {access.reason === "dev_store" && !subscriptionActive && (
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="subscribe" />
+                      <Button submit loading={busyIntent === "subscribe"}>
+                        {t("billing.subscribeTest", { price: planPrice })}
+                      </Button>
+                    </Form>
+                  )}
+                  {(access.reason === "subscribed" || (access.reason === "dev_store" && subscriptionActive)) && (
                     <Button tone="critical" loading={busyIntent === "cancel"} onClick={() => setConfirmCancel(true)}>
                       {t("billing.cancel")}
                     </Button>

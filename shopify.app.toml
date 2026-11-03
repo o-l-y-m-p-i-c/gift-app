@@ -36,11 +36,13 @@ api_version = "2026-07"
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 # read_products   — list gift products and check variant prices
 # read_discounts  — check whether a customer's promo code combines with gifts
-# write_discounts — create the single-use gift discount codes
-# read_orders     — record gift history from orders/create
+# write_discounts — run the automatic gift discount (gift-discount Function);
+#                   older carts fall back to single-use gift codes
+# read_orders is left out until gift history (orders/create) is enabled: it
+# needs protected customer data approval and nothing else uses it.
 # read_metaobjects, write_metaobjects — store gift tiers in the $app:gift_tier metaobject
 # read_metaobject_definitions, write_metaobject_definitions — install the gift_tier definition
-scopes = "read_products,read_discounts,write_discounts,read_orders,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions"
+scopes = "read_products,read_discounts,write_discounts,read_metaobjects,write_metaobjects,read_metaobject_definitions,write_metaobject_definitions"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

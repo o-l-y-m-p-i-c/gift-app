@@ -167,8 +167,9 @@ export const en = {
   "billing.trialEndsOn": "Your trial ends on {date}. Subscribing now won't charge you until then.",
   "billing.periodEndsOn": "The current billing period ends on {date}.",
   "billing.devStoreNote":
-    "This is a development store, so no subscription is needed. Billing starts once the store moves to a paid Shopify plan.",
+    "This is a development store, so the app is free and no subscription is needed. You can still try the subscription: development stores get a test charge, so nothing is billed. Billing starts once the store moves to a paid Shopify plan.",
   "billing.subscribe": "Subscribe for {price}/month",
+  "billing.subscribeTest": "Try the subscription for {price}/month (test charge)",
   "billing.cancelConfirm": "Cancel the subscription? Gifts stop on your storefront unless the free trial is still running.",
   "billing.cancel": "Cancel subscription",
   "billing.cancelTitle": "Cancel subscription?",

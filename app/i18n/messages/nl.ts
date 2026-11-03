@@ -161,8 +161,9 @@ export const nl: Messages = {
   "billing.trialEndsOn": "Je proefperiode eindigt op {date}. Neem je nu een abonnement, dan betaal je pas daarna.",
   "billing.periodEndsOn": "De huidige factureringsperiode eindigt op {date}.",
   "billing.devStoreNote":
-    "Dit is een ontwikkelwinkel, dus een abonnement is niet nodig. Facturering begint zodra de winkel overstapt op een betaald Shopify-abonnement.",
+    "Dit is een ontwikkelwinkel, dus de app is gratis en een abonnement is niet nodig. Je kunt het abonnement toch proberen: ontwikkelwinkels krijgen een testafschrijving, er wordt niets in rekening gebracht. Facturering begint zodra de winkel overstapt op een betaald Shopify-abonnement.",
   "billing.subscribe": "Abonneren voor {price}/maand",
+  "billing.subscribeTest": "Abonnement proberen voor {price}/maand (testafschrijving)",
   "billing.cancelConfirm": "Abonnement opzeggen? Cadeaus stoppen in je winkel, tenzij de gratis proefperiode nog loopt.",
   "billing.cancel": "Abonnement opzeggen",
   "billing.cancelTitle": "Abonnement opzeggen?",

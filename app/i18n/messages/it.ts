@@ -161,8 +161,9 @@ export const it: Messages = {
   "billing.trialEndsOn": "La prova termina il {date}. Abbonandoti ora non ti verrà addebitato nulla fino ad allora.",
   "billing.periodEndsOn": "Il periodo di fatturazione corrente termina il {date}.",
   "billing.devStoreNote":
-    "Questo è un negozio di sviluppo, quindi non serve un abbonamento. La fatturazione inizia quando il negozio passa a un piano Shopify a pagamento.",
+    "Questo è un negozio di sviluppo, quindi l'app è gratuita e non serve un abbonamento. Puoi comunque provarlo: i negozi di sviluppo ricevono un addebito di prova e non viene addebitato nulla. La fatturazione inizia quando il negozio passa a un piano Shopify a pagamento.",
   "billing.subscribe": "Abbonati per {price}/mese",
+  "billing.subscribeTest": "Prova l'abbonamento a {price}/mese (addebito di prova)",
   "billing.cancelConfirm": "Annullare l'abbonamento? I regali si fermano nel negozio, a meno che la prova gratuita sia ancora attiva.",
   "billing.cancel": "Annulla abbonamento",
   "billing.cancelTitle": "Annullare l'abbonamento?",
