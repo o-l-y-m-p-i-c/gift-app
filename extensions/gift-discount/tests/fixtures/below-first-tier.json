@@ -1,0 +1,89 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "quantity": 1,
+            "gift": null,
+            "cost": {
+              "amountPerQuantity": {
+                "amount": "40.00"
+              },
+              "subtotalAmount": {
+                "amount": "40.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/1",
+              "product": {
+                "excluded": false,
+                "excludedTag": false
+              }
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/2",
+            "quantity": 1,
+            "gift": {
+              "value": "true"
+            },
+            "cost": {
+              "amountPerQuantity": {
+                "amount": "1.20"
+              },
+              "subtotalAmount": {
+                "amount": "1.20"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/2",
+              "product": {
+                "excluded": false,
+                "excludedTag": false
+              }
+            }
+          }
+        ]
+      },
+      "presentmentCurrencyRate": "1.0",
+      "shop": {
+        "localTime": {
+          "accessOpen": true
+        }
+      },
+      "discount": {
+        "discountClasses": [
+          "PRODUCT"
+        ],
+        "metafield": {
+          "jsonValue": {
+            "active": true,
+            "tiers": [
+              {
+                "minAmount": 5000,
+                "giftAmount": 250
+              },
+              {
+                "minAmount": 10000,
+                "giftAmount": 750
+              },
+              {
+                "minAmount": 30000,
+                "giftAmount": 4500
+              }
+            ]
+          }
+        }
+      }
+    },
+    "output": {
+      "operations": []
+    }
+  }
+}

@@ -1,0 +1,47 @@
+# Variables come from the discount's $app:gift/function-config metafield,
+# written by the app whenever tiers, settings or billing change.
+query CartInput(
+  $excludedCollectionIds: [ID!]
+  $excludedTags: [String!]
+  $accessUntil: DateTimeWithoutTimezone!
+) {
+  cart {
+    lines {
+      id
+      quantity
+      gift: attribute(key: "_gift") {
+        value
+      }
+      cost {
+        amountPerQuantity {
+          amount
+        }
+        subtotalAmount {
+          amount
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            excluded: inAnyCollection(ids: $excludedCollectionIds)
+            excludedTag: hasAnyTag(tags: $excludedTags)
+          }
+        }
+      }
+    }
+  }
+  presentmentCurrencyRate
+  shop {
+    localTime {
+      accessOpen: dateTimeBefore(dateTime: $accessUntil)
+    }
+  }
+  discount {
+    discountClasses
+    metafield(namespace: "$app:gift", key: "function-config") {
+      jsonValue
+    }
+  }
+}

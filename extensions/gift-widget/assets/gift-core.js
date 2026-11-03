@@ -46,6 +46,9 @@
     showLevelUpNotification: true,
     showRemovalNotification: true,
   };
+  // "function": the gift-discount Function makes gift lines free, so adding a
+  // gift is just adding the line. "code": older setup, a discount code per gift.
+  let giftDiscountMode = "code";
   let configLoaded = false;
   let configLoading = null;
   let cartRequest = null;
@@ -246,6 +249,7 @@
     if (embedded) {
       return {
         tiers: embedded.tiers,
+        giftDiscount: embedded.giftDiscount,
         settings: {
           ...embedded.settings,
           active: Boolean(embedded.settings?.active) && billingAllowsGifts(embedded.billing),
@@ -276,6 +280,7 @@
         }))
         .sort((a, b) => a.minAmount - b.minAmount);
       settings = config.settings || settings;
+      giftDiscountMode = config.giftDiscount === "function" ? "function" : "code";
       configLoaded = true;
     })();
 
@@ -660,11 +665,70 @@
     return { ok: response.ok && Boolean(data.code), data };
   }
 
+  /** Drop gift codes left from the code-based setup, keeping the customer's own. */
+  async function clearGiftCodes(cart) {
+    if (!(cart?.discount_codes || []).some((discount) => discount.code && isGiftCode(discount.code))) return cart;
+    const response = await cartPost("cart/update.js", { discount: getExternalDiscountCodes(cart).join(",") });
+    return response.ok ? response.json() : cart;
+  }
+
+  /**
+   * Function mode: add the gift line and let the gift-discount Function make
+   * it free. No discount code, so no server round trip and no wait for a new
+   * code to become usable.
+   */
+  async function addGiftLine(variantId) {
+    const variantIdStr = String(variantId);
+    const selectionId = generateSelectionId();
+    const addResponse = await cartPost("cart/add.js", {
+      items: [{
+        id: Number(variantIdStr),
+        quantity: 1,
+        properties: {
+          [GIFT_PROPERTY_KEY]: GIFT_PROPERTY_VALUE,
+          [GIFT_SELECTION_PROPERTY_KEY]: selectionId,
+        },
+      }],
+    });
+    const addData = await addResponse.json().catch(() => ({}));
+    if (!addResponse.ok) {
+      throw new Error(addData.description || "Unable to add this gift.");
+    }
+
+    let cart = await clearGiftCodes(await fetchCart());
+    if (getFreeGiftQuantity(cart) !== getGiftSelections(cart).length) {
+      // The Function didn't make it free (over budget, excluded, tier lost):
+      // take the line back out rather than charge for it.
+      const added = getGiftItems(cart).find((item) => item.properties?.[GIFT_SELECTION_PROPERTY_KEY] === selectionId);
+      if (added) cart = await removeGiftByKey(added.key);
+      throw new Error("The selected gift could not be made fully free.");
+    }
+
+    lastCart = cart;
+    await refreshCart(cart);
+    return { ok: true, selectionId, cart };
+  }
+
   async function addGift(variantId, tierId, options = {}) {
     if (mutationLock) {
       return { ok: false, error: "A gift operation is already in progress." };
     }
     mutationLock = true;
+
+    try {
+      await ensureConfig();
+    } catch {
+      // The code path below reports the config error itself.
+    }
+    if (giftDiscountMode === "function") {
+      try {
+        return await addGiftLine(variantId);
+      } catch (e) {
+        return { ok: false, error: e.message || "Unable to add this gift." };
+      } finally {
+        mutationLock = false;
+      }
+    }
 
     const variantIdStr = String(variantId);
     let giftAdded = false;
@@ -876,7 +940,8 @@
       }
 
       await removeGiftByKey(target.key);
-      await syncGiftCode(await fetchCart());
+      if (giftDiscountMode === "function") await clearGiftCodes(await fetchCart());
+      else await syncGiftCode(await fetchCart());
 
       const finalCart = await fetchCart();
       await refreshCart(finalCart);
@@ -898,6 +963,7 @@
       }
     }
     const updatedCart = await fetchCart();
+    if (giftDiscountMode === "function") return clearGiftCodes(updatedCart);
     await cartPost("cart/update.js", { discount: getExternalDiscountCodes(updatedCart).join(",") });
     return fetchCart();
   }

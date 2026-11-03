@@ -1,6 +1,7 @@
 import { prisma } from "~/db.server";
 import { adminGraphql } from "~/lib/admin-api.server";
 import { getBillingAccess } from "~/lib/billing.server";
+import { syncGiftDiscount } from "~/models/gift-discount.server";
 import { getActiveTiers } from "~/models/tier.server";
 
 /**
@@ -55,6 +56,10 @@ async function getInstallationId(shopId: string) {
 export async function syncStorefrontConfig(shopId: string) {
   try {
     const [ownerId, config] = await Promise.all([getInstallationId(shopId), buildStorefrontConfig(shopId)]);
+    // With the discount in place the storefront only adds gift lines; the
+    // gift-discount Function makes them free. Otherwise it falls back to
+    // creating a discount code per gift.
+    const giftDiscount = (await syncGiftDiscount(shopId, config)) ? "function" : "code";
     const data: any = await adminGraphql(
       `#graphql
         mutation SetGiftConfig($metafields: [MetafieldsSetInput!]!) {
@@ -68,7 +73,7 @@ export async function syncStorefrontConfig(shopId: string) {
       `,
       {
         metafields: [
-          { ownerId, namespace: CONFIG_NAMESPACE, key: CONFIG_KEY, type: "json", value: JSON.stringify(config) },
+          { ownerId, namespace: CONFIG_NAMESPACE, key: CONFIG_KEY, type: "json", value: JSON.stringify({ ...config, giftDiscount }) },
         ],
       },
       shopId,

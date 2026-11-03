@@ -71,6 +71,7 @@ model AppSettings {
   excludedTags            String[]  @default([])
   currencyCode            String    @default("USD") // shop currency; tier amounts use it
   tiersMigratedAt         DateTime? // legacy GiftTier rows copied to metaobjects
+  giftDiscountId          String? // automatic discount run by the gift-discount Function
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 }
