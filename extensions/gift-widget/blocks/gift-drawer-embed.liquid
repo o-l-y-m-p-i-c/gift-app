@@ -52,6 +52,8 @@
      data-product-preview="{{ block.settings.product_preview | default: 'disabled' }}"
      data-drawer-selector="{{ block.settings.drawer_selector | escape }}"
      data-drawer-position="{{ block.settings.drawer_position | default: 'top' }}"
+     data-insert-selector="{{ block.settings.insert_selector | escape }}"
+     data-insert-mode="{{ block.settings.insert_mode | default: 'before' }}"
      data-cta-choose="{{ cta_choose | escape }}"
      data-cta-more="{{ cta_more | escape }}"
      data-cta-manage="{{ cta_manage | escape }}"
@@ -164,6 +166,36 @@
         }
       ],
       "default": "top"
+    },
+    {
+      "type": "text",
+      "id": "insert_selector",
+      "label": "Place next to element",
+      "info": "Optional CSS selector of an element in the cart drawer, for example .cart-drawer__items. Replaces the position above when it matches."
+    },
+    {
+      "type": "select",
+      "id": "insert_mode",
+      "label": "Placement",
+      "options": [
+        {
+          "value": "before",
+          "label": "Before the element"
+        },
+        {
+          "value": "after",
+          "label": "After the element"
+        },
+        {
+          "value": "prepend",
+          "label": "Inside, at the start"
+        },
+        {
+          "value": "append",
+          "label": "Inside, at the end"
+        }
+      ],
+      "default": "before"
     },
     {
       "type": "header",

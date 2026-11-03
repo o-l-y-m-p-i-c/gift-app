@@ -156,7 +156,16 @@
     sourceContainer = findSourceContainer();
     if (!sourceContainer) return false;
 
-    const drawer = findDrawer();
+    // A merchant-chosen element wins over detection, for themes whose drawer
+    // markup the candidates below don't cover. Looked up in the drawer first,
+    // then the page, so it works even when the drawer itself isn't detected.
+    const insertSelector = getSetting("insertSelector", "");
+    const detectedDrawer = findDrawer();
+    const insertTarget = insertSelector
+      ? (detectedDrawer && firstMatch(detectedDrawer, [insertSelector])) || firstMatch(document, [insertSelector])
+      : null;
+
+    const drawer = detectedDrawer || insertTarget;
     if (!drawer) return false;
 
     // A drawer block rendered inside the drawer is used in place.
@@ -168,7 +177,10 @@
       return true;
     }
 
-    mountContainer = document.createElement("div");
+    // A tag of our own: themes that morph the drawer (Horizon) pair old and
+    // new children by tag name, so a plain <div> here got matched with the
+    // theme's next <div> and overwritten, shifting every element after it.
+    mountContainer = document.createElement("gift-drawer-widget");
     mountContainer.className = "gift-drawer-widget";
     mountContainer.setAttribute("data-gift-drawer-mounted", "");
     for (const attr of sourceContainer.attributes) {
@@ -180,6 +192,15 @@
     mountContainer.setAttribute("style", sourceContainer.getAttribute("style") || "");
     mountContainer.style.display = "";
     mountContainer.innerHTML = lastHtml;
+
+    if (insertTarget) {
+      const mode = getSetting("insertMode", "before");
+      if (mode === "after") insertTarget.after(mountContainer);
+      else if (mode === "prepend") insertTarget.prepend(mountContainer);
+      else if (mode === "append") insertTarget.append(mountContainer);
+      else insertTarget.before(mountContainer);
+      return true;
+    }
 
     const content = firstMatch(drawer, CONTENT_CANDIDATES);
     const footer = firstMatch(drawer, FOOTER_CANDIDATES);
