@@ -11,7 +11,9 @@
  *   - Mounting a compact widget at the top of the drawer or above its footer
  *   - Progress scale, budget summary, CTA link to the cart page
  *   - Optional 3-4 product preview
- *   - Re-mounting after the theme re-renders the drawer
+ *   - Re-mounting after the theme re-renders the drawer: the widget sits next
+ *     to the theme's item list rather than inside it, and comes back with its
+ *     last content in the same task, so cart updates don't wipe or flash it
  */
 
 (function () {
@@ -60,6 +62,8 @@
 
   let sourceContainer = null;
   let mountContainer = null;
+  // The last rendered widget, put back at once when the theme replaces it.
+  let lastHtml = "";
   let observer = null;
   let renderDebounce = null;
   let isRendering = false;
@@ -160,6 +164,7 @@
       mountContainer = sourceContainer;
       mountContainer.classList.add("gift-drawer-widget");
       mountContainer.style.display = "";
+      if (lastHtml && !mountContainer.innerHTML.trim()) mountContainer.innerHTML = lastHtml;
       return true;
     }
 
@@ -174,15 +179,19 @@
     mountContainer.removeAttribute("data-gift-drawer-widget");
     mountContainer.setAttribute("style", sourceContainer.getAttribute("style") || "");
     mountContainer.style.display = "";
+    mountContainer.innerHTML = lastHtml;
 
     const content = firstMatch(drawer, CONTENT_CANDIDATES);
     const footer = firstMatch(drawer, FOOTER_CANDIDATES);
     const position = getSetting("drawerPosition", "top");
 
+    // Placed beside the item list, not inside it: themes rewrite or morph the
+    // list on every add, remove and quantity change, and a foreign node in it
+    // gets deleted or confuses the theme's own update.
     if (position === "bottom" && footer) {
       footer.before(mountContainer);
     } else if (content) {
-      content.prepend(mountContainer);
+      content.before(mountContainer);
     } else if (footer) {
       footer.before(mountContainer);
     } else {
@@ -192,16 +201,19 @@
     return true;
   }
 
+  // Watches the whole page, not the drawer: some themes replace the drawer
+  // element itself, which would leave an observer on it watching nothing.
+  // Mutation callbacks run before the next paint, so the widget is back
+  // with its last content before the customer sees it missing.
   function setupDrawerObserver() {
-    if (observer) observer.disconnect();
-    const drawer = findDrawer();
-    if (!drawer || typeof MutationObserver === "undefined") return;
-
+    if (observer || typeof MutationObserver === "undefined") return;
     observer = new MutationObserver(() => {
       if (mountContainer && document.contains(mountContainer)) return;
-      scheduleRender(200);
+      // Also covers a drawer that was removed and later added back.
+      mountContainer = null;
+      if (ensureMounted()) scheduleRender(150);
     });
-    observer.observe(drawer, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   // ─── Rendering ─────────────────────────────────────────────
@@ -248,6 +260,7 @@
       const tiers = G.getTiers();
 
       if (!tiers || tiers.length === 0) {
+        lastHtml = "";
         mountContainer.innerHTML = "";
         return;
       }
@@ -335,6 +348,12 @@
 
       html += `<p class="gift-drawer-widget__footnote">${esc(t("footnote"))}</p>`;
       html += "</div>";
+      lastHtml = html;
+      // The theme may have replaced the drawer while products were loading.
+      if (!document.contains(mountContainer)) {
+        mountContainer = null;
+        if (!ensureMounted()) return;
+      }
       mountContainer.innerHTML = html;
 
       scrollScaleToCurrent(mountContainer, tiers, thresholdBase, STEP_WIDTH);

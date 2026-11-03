@@ -798,6 +798,8 @@
    ═══════════════════════════════════════════════════════════════ */
 
 .gift-drawer-widget {
+  /* Sits beside the theme's item list, which is often a flex: 1 scroller. */
+  flex: 0 0 auto;
   padding: calc(var(--gift-padding) * 0.6) var(--gift-padding);
   border-top: var(--gift-border-width) solid var(--gift-border);
   background: var(--gift-bg);
